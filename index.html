@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0c1013">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>POSITION DRILL</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="shortcut icon" href="favicon.ico">
+  <script>
+    window.__quizAssetVersion = Date.now().toString();
+    const quizStylesheet = document.createElement("link");
+    quizStylesheet.rel = "stylesheet";
+    quizStylesheet.href = `styles.css?v=${window.__quizAssetVersion}`;
+    document.head.appendChild(quizStylesheet);
+  </script>
+</head>
+<body>
+  <header class="page-header">
+    <div class="title-group">
+      <h1 id="page-title">POSITION DRILL</h1>
+      <a class="creator" href="https://www.youtube.com/@YANAGIBackgammon" target="_blank" rel="noopener noreferrer"><span class="creator-prefix">Created by</span><span class="creator-name">YANAGI Backgammon</span></a>
+    </div>
+  </header>
+
+  <main>
+    <section class="controls" aria-label="Drill settings">
+      <div class="type-tabs" role="group" aria-label="Position type">
+        <button type="button" class="type-tab is-active" data-kind="checker"><span class="type-label-full">Checker Play</span><span class="type-label-short">Checker</span><span class="type-count"><span data-count="checker">0</span></span></button>
+        <button type="button" class="type-tab" data-kind="double"><span class="type-label-full">Double Action</span><span class="type-label-short">Double</span><span class="type-count"><span data-count="double">0</span></span></button>
+        <button type="button" class="type-tab" data-kind="take"><span class="type-label-full">Take Action</span><span class="type-label-short">Take</span><span class="type-count"><span data-count="take">0</span></span></button>
+      </div>
+      <div class="filter-tabs" role="group" aria-label="Position filters">
+        <button type="button" class="filter-tab" data-filter="task" aria-pressed="false"><span class="filter-label">Task</span></button>
+        <button type="button" class="filter-tab" data-filter="new" aria-pressed="false"><span class="filter-label">New</span></button>
+      </div>
+    </section>
+
+    <section id="quiz-card" class="quiz-card" aria-live="polite">
+      <div class="quiz-layout">
+        <div class="position-column">
+          <div class="board-wrap">
+            <img id="board-image" alt="Backgammon drill position" loading="eager" decoding="async" fetchpriority="high">
+          </div>
+
+        </div>
+
+        <div class="answer-column">
+          <section id="answer-panel" class="answer-panel">
+            <div class="analysis-section">
+              <div class="analysis-grid">
+                <div id="action-analysis" class="action-analysis"></div>
+                <div id="summary-analysis" class="summary-analysis"></div>
+              </div>
+            </div>
+
+            <div class="judge-area">
+              <button id="answer-button" class="primary-button answer-button" type="button">CHECK</button>
+              <div id="judge-buttons" class="judge-buttons" hidden>
+                <button id="correct-button" class="judge-button correct-button" type="button" aria-label="Correct" aria-pressed="false">○</button>
+                <button id="wrong-button" class="judge-button wrong-button" type="button" aria-label="Incorrect" aria-pressed="false">×</button>
+              </div>
+              <button id="next-button" class="primary-button next-button" type="button">SKIP</button>
+            </div>
+
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="empty-state" class="empty-state" hidden></section>
+
+    <div class="record-source-row">
+      <section class="records-row" aria-label="Drill records">
+        <div class="record-group" aria-label="Total record">
+          <span class="record-label">Total</span>
+          <strong id="total-correct" class="record-number record-correct" aria-label="Correct">0</strong>
+          <strong id="total-wrong" class="record-number record-wrong" aria-label="Incorrect">0</strong>
+        </div>
+        <div class="record-group" aria-label="Today record">
+          <span class="record-label">Today</span>
+          <strong id="today-correct" class="record-number record-correct" aria-label="Correct">0</strong>
+          <strong id="today-wrong" class="record-number record-wrong" aria-label="Incorrect">0</strong>
+        </div>
+        <div id="position-record" class="record-group" aria-label="Now record">
+          <span class="record-label">Now</span>
+          <strong id="position-correct" class="record-number record-correct" aria-label="Correct">0</strong>
+          <strong id="position-wrong" class="record-number record-wrong" aria-label="Incorrect">0</strong>
+        </div>
+      </section>
+      <div id="source-file" class="source-file"></div>
+    </div>
+  </main>
+
+  <script>
+    const quizAppScript = document.createElement("script");
+    quizAppScript.src = `app.js?v=${window.__quizAssetVersion || Date.now()}`;
+    document.body.appendChild(quizAppScript);
+  </script>
+</body>
+</html>
