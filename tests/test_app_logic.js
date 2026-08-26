@@ -26,6 +26,7 @@ function dummyElement() {
     addEventListener() {},
     removeAttribute() {},
     setAttribute() {},
+    querySelector() { return dummyElement(); },
   };
 }
 
@@ -129,10 +130,10 @@ run("New: build-time boolean wins, timestamp fallback is seven days", () => {
 run("Task + New filters intersect and counts are per decision kind", () => {
   evaluate(`
     state.positions = [
-      {id:"C1",decisionKind:"checker",isNew:true},
-      {id:"C2",decisionKind:"checker",isNew:false},
-      {id:"D1",decisionKind:"double",isNew:true},
-      {id:"T1",decisionKind:"take",isNew:true}
+      {id:"C1",decisionKind:"checker",matchLength:7,isNew:true},
+      {id:"C2",decisionKind:"checker",matchLength:7,isNew:false},
+      {id:"D1",decisionKind:"double",matchLength:7,isNew:true},
+      {id:"T1",decisionKind:"take",matchLength:7,isNew:true}
     ];
     state.progress = {
       C1:{correct:0,wrong:0},
@@ -140,6 +141,7 @@ run("Task + New filters intersect and counts are per decision kind", () => {
       D1:{correct:2,wrong:0},
       T1:{correct:0,wrong:1}
     };
+    state.matchType = "point";
     state.filters = {task:true,new:true};
   `);
 
@@ -254,5 +256,237 @@ run("Zero-result filter keeps the drill areas and game-info skeleton", () => {
   assert.match(summary, /class="win-grid-line is-mid"/);
 });
 
+
+
+run("Checker candidate selection switches only W/GW/BG rates and graph", () => {
+  context.checkerPosition = {
+    decisionKind: "checker",
+    decisionType: "checker",
+    position: Array(26).fill(0),
+    playerScore: 2,
+    opponentScore: 3,
+    cubeValue: 1,
+    matchLength: 7,
+    isCrawford: false,
+    isPostCrawford: false,
+    winRate: 0.40,
+    loseRate: 0.60,
+    gammonWinRate: 0.10,
+    gammonLoseRate: 0.20,
+    backgammonWinRate: 0.01,
+    backgammonLoseRate: 0.02,
+    candidates: [
+      {
+        rank: 1,
+        action: "13/8 6/5",
+        equityLoss: 0,
+        winRate: 0.62,
+        loseRate: 0.38,
+        gammonWinRate: 0.18,
+        gammonLoseRate: 0.08,
+        backgammonWinRate: 0.03,
+        backgammonLoseRate: 0.01
+      },
+      {
+        rank: 2,
+        action: "13/7",
+        equityLoss: 0.025,
+        winRate: 0.55,
+        loseRate: 0.45,
+        gammonWinRate: 0.12,
+        gammonLoseRate: 0.11,
+        backgammonWinRate: 0.02,
+        backgammonLoseRate: 0.01
+      }
+    ]
+  };
+
+  const actionHtml = evaluate("actionAnalysisHTML(checkerPosition)");
+  assert.match(actionHtml, /data-checker-candidate-index="0"/);
+  assert.match(actionHtml, /data-checker-candidate-index="1"/);
+
+  context.selectedChecker = context.checkerPosition.candidates[1];
+  const summary = evaluate("summaryAnalysisHTML(checkerPosition, selectedChecker)");
+  assert.match(summary, />55\.0%<\/span>/);
+  assert.match(summary, />45\.0%<\/span>/);
+  assert.match(summary, />12\.0%<\/span>/);
+  assert.match(summary, /left:55\.000%/);
+});
+
+run("Cube actions remain non-selectable", () => {
+  context.cubePosition = {
+    decisionKind: "double",
+    decisionType: "cube",
+    playedAction: "No Double",
+    bestAction: "No Double",
+    candidates: [
+      {rank:1,action:"No Double",equityDifference:null},
+      {rank:2,action:"Double/Take",equityDifference:-0.050}
+    ]
+  };
+
+  const html = evaluate("actionAnalysisHTML(cubePosition)");
+  assert.doesNotMatch(html, /data-checker-candidate-index/);
+  assert.doesNotMatch(html, /is-checker-candidate/);
+});
+
+
+
+run("Match type classification uses score and current cube for DMP", () => {
+  assert.equal(
+    evaluate('positionMatchType({matchLength:11,playerScore:9,opponentScore:9,cubeValue:2})'),
+    "dmp",
+  );
+  assert.equal(
+    evaluate('positionMatchType({matchLength:11,playerScore:7,opponentScore:7,cubeValue:4})'),
+    "dmp",
+  );
+  assert.equal(
+    evaluate('positionMatchType({matchLength:11,playerScore:10,opponentScore:10,cubeValue:1})'),
+    "dmp",
+  );
+  assert.equal(
+    evaluate('positionMatchType({matchLength:11,playerScore:9,opponentScore:8,cubeValue:2})'),
+    "point",
+  );
+  assert.equal(
+    evaluate('positionMatchType({matchLength:11,playerScore:9,opponentScore:9,cubeValue:1})'),
+    "point",
+  );
+  assert.equal(
+    evaluate('positionMatchType({matchLength:7,playerScore:4,opponentScore:4,cubeValue:2})'),
+    "point",
+  );
+  assert.equal(evaluate('positionMatchType({matchLength:1})'), "dmp");
+  assert.equal(evaluate('positionMatchType({matchLength:0})'), "unlimited");
+  assert.equal(evaluate('positionMatchType({matchLength:99999})'), "unlimited");
+});
+
+run("ALL decision kind and match type filter compose with Task/New", () => {
+  evaluate(`
+    state.positions = [
+      {id:"C7",decisionKind:"checker",matchLength:7,isNew:true},
+      {id:"D1",decisionKind:"double",matchLength:1,isNew:true},
+      {id:"TU",decisionKind:"take",matchLength:99999,isNew:true},
+      {id:"C7OLD",decisionKind:"checker",matchLength:7,isNew:false}
+    ];
+    state.progress = {
+      C7:{correct:0,wrong:0},
+      D1:{correct:0,wrong:0},
+      TU:{correct:0,wrong:0},
+      C7OLD:{correct:0,wrong:0}
+    };
+    state.matchType = "point";
+    state.filters = {task:true,new:true};
+  `);
+
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("all").map(p => p.id)')),
+    ["C7"],
+  );
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["C7"],
+  );
+
+  evaluate('state.matchType = "all"; state.filters = {task:false,new:false};');
+});
+
+run("Kind selector cycles Checker / Double / Take", () => {
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", 1)'), "double");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "double", 1)'), "take");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "take", 1)'), "checker");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", -1)'), "take");
+});
+
+run("Match selector cycles Point / Unlimited / DMP", () => {
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", 1)'), "unlimited");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "unlimited", 1)'), "dmp");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "dmp", 1)'), "point");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", -1)'), "dmp");
+  assert.equal(evaluate('matchTypeDisplayLabels("point").short'), "Point");
+});
+
+
+
+run("Match count stays total while kind count follows Task/New filters", () => {
+  evaluate(`
+    state.positions = [
+      {id:"C7",decisionKind:"checker",matchLength:7,isNew:true},
+      {id:"C7OLD",decisionKind:"checker",matchLength:7,isNew:false},
+      {id:"D7",decisionKind:"double",matchLength:7,isNew:true},
+      {id:"C1",decisionKind:"checker",matchLength:1,isNew:true},
+      {id:"DU",decisionKind:"double",matchLength:99999,isNew:true}
+    ];
+    state.progress = {};
+    state.currentKind = "checker";
+    state.matchType = "point";
+    state.filters = {task:false,new:true};
+    updateCounts();
+  `);
+
+  assert.equal(evaluate("elements.kindCount.textContent"), "1");
+  assert.equal(evaluate("elements.matchCount.textContent"), "3");
+});
+
+
+run("DMP forces Checker Play and disables the second selector", () => {
+  evaluate(`
+    state.currentKind = "take";
+    state.matchType = "point";
+    setMatchType("dmp");
+  `);
+
+  assert.equal(evaluate("state.matchType"), "dmp");
+  assert.equal(evaluate("state.currentKind"), "checker");
+  assert.equal(evaluate("elements.kindSelector.disabled"), true);
+
+  evaluate("cycleKind(1)");
+  assert.equal(evaluate("state.currentKind"), "checker");
+
+  evaluate('setMatchType("point")');
+  assert.equal(evaluate("elements.kindSelector.disabled"), false);
+});
+
+
+run("Cube-aware DMP positions sort into DMP instead of Point Match", () => {
+  evaluate(`
+    state.positions = [
+      {
+        id:"DMP-99-11-C2",
+        decisionKind:"checker",
+        matchLength:11,
+        playerScore:9,
+        opponentScore:9,
+        cubeValue:2,
+        isNew:true
+      },
+      {
+        id:"POINT-99-11-C1",
+        decisionKind:"checker",
+        matchLength:11,
+        playerScore:9,
+        opponentScore:9,
+        cubeValue:1,
+        isNew:true
+      }
+    ];
+    state.progress = {};
+    state.currentKind = "checker";
+    state.filters = {task:false,new:false};
+  `);
+
+  evaluate('state.matchType = "dmp"');
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["DMP-99-11-C2"],
+  );
+
+  evaluate('state.matchType = "point"');
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["POINT-99-11-C1"],
+  );
+});
 
 console.log("All app regression tests passed.");

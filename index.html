@@ -31,14 +31,29 @@
 
   <main>
     <section class="controls" aria-label="Drill settings">
-      <div class="type-tabs" role="group" aria-label="Position type">
-        <button type="button" class="type-tab is-active" data-kind="checker"><span class="type-label-full">Checker Play</span><span class="type-label-short">Checker</span><span class="type-count"><span data-count="checker">0</span></span></button>
-        <button type="button" class="type-tab" data-kind="double"><span class="type-label-full">Double Action</span><span class="type-label-short">Double</span><span class="type-count"><span data-count="double">0</span></span></button>
-        <button type="button" class="type-tab" data-kind="take"><span class="type-label-full">Take Action</span><span class="type-label-short">Take</span><span class="type-count"><span data-count="take">0</span></span></button>
-      </div>
-      <div class="filter-tabs" role="group" aria-label="Position filters">
-        <button type="button" class="filter-tab" data-filter="task" aria-pressed="false"><span class="filter-label">Task</span></button>
-        <button type="button" class="filter-tab" data-filter="new" aria-pressed="false"><span class="filter-label">New</span></button>
+      <div class="menu-grid">
+        <div class="menu-group menu-group-primary">
+          <div id="match-selector-slot" class="menu-slot selector-slot" data-selector="match">
+            <button id="match-selector" type="button" class="menu-selector" aria-label="Match type">
+              <span class="selector-label-full">Point Match</span>
+              <span class="selector-label-short">Point</span>
+              <span id="match-count" class="selector-count">0</span>
+            </button>
+          </div>
+
+          <div id="kind-selector-slot" class="menu-slot selector-slot" data-selector="kind">
+            <button id="kind-selector" type="button" class="menu-selector" aria-label="Position type">
+              <span class="selector-label-full">Checker Play</span>
+              <span class="selector-label-short">Checker</span>
+              <span id="kind-count" class="selector-count">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="menu-group menu-group-filters">
+          <button type="button" class="menu-slot filter-tab" data-filter="task" aria-pressed="true" aria-label="Task filter: Task"><span class="filter-label">Task</span></button>
+          <button type="button" class="menu-slot filter-tab" data-filter="new" aria-pressed="true" aria-label="New filter: New"><span class="filter-label">New</span></button>
+        </div>
       </div>
     </section>
 

@@ -4,6 +4,7 @@ const POSITIONS_ROOT = new URL("./", window.location.href).href;
 const DATA_URL = `${POSITIONS_ROOT}data/positions.json`;
 const STORAGE_KEY = "yanagi-backgammon-quiz-progress-v1";
 const SETTINGS_KEY = "yanagi-backgammon-quiz-settings-v1";
+const FILTER_MODE_VERSION = 2;
 const DAILY_STORAGE_KEY = "yanagi-backgammon-quiz-daily-v1";
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const BOARD_PRELOAD_COUNT = 3;
@@ -13,14 +14,26 @@ const LOCAL_DB_STORE = "records";
 const NEW_POSITION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const KIND_LABELS = {
+  all: "All",
   checker: "Checker Play",
   double: "Double Action",
   take: "Take Action",
 };
 
+const MATCH_TYPE_LABELS = {
+  all: "All",
+  point: "Point Match",
+  dmp: "DMP",
+  unlimited: "Unlimited",
+};
+
+const KIND_ORDER = ["checker", "double", "take"];
+const MATCH_TYPE_ORDER = ["point", "unlimited", "dmp"];
+
 const state = {
   positions: [],
   currentKind: "checker",
+  matchType: "point",
   current: null,
   answered: false,
   progress: {},
@@ -28,14 +41,18 @@ const state = {
   dailyResetTimer: null,
   dataVersion: "",
   boardQueue: [],
-  filters: { task: false, new: false },
+  filters: { task: true, new: true },
 };
 
 const elements = {
   card: document.getElementById("quiz-card"),
   empty: document.getElementById("empty-state"),
-  tabs: [...document.querySelectorAll("[data-kind]")],
-  counts: [...document.querySelectorAll("[data-count]")],
+  kindSelector: document.getElementById("kind-selector"),
+  kindSelectorSlot: document.getElementById("kind-selector-slot"),
+  kindCount: document.getElementById("kind-count"),
+  matchSelector: document.getElementById("match-selector"),
+  matchSelectorSlot: document.getElementById("match-selector-slot"),
+  matchCount: document.getElementById("match-count"),
   filterButtons: [...document.querySelectorAll("[data-filter]")],
   board: document.getElementById("board-image"),
   positionCorrect: document.getElementById("position-correct"),
@@ -169,8 +186,10 @@ function saveProgress() {
 function saveSettings() {
   const settings = {
     kind: state.currentKind,
+    matchType: state.matchType,
     taskOnly: state.filters.task,
     newOnly: state.filters.new,
+    filterModeVersion: FILTER_MODE_VERSION,
   };
   saveLocalJSON(SETTINGS_KEY, settings);
   mirrorLocalDB(SETTINGS_KEY, settings);
@@ -282,12 +301,55 @@ function decisionKind(position) {
   return null;
 }
 
+function positionMatchType(position) {
+  const matchLength = Number(position?.matchLength);
+  if (!Number.isFinite(matchLength) || matchLength <= 0 || matchLength >= 99999) {
+    return "unlimited";
+  }
+
+  const playerScore = Number(position?.playerScore);
+  const opponentScore = Number(position?.opponentScore);
+  const rawCubeValue = Number(position?.cubeValue);
+  const cubeValue = Number.isFinite(rawCubeValue) && rawCubeValue > 0
+    ? rawCubeValue
+    : 1;
+
+  if (Number.isFinite(playerScore) && Number.isFinite(opponentScore)) {
+    const playerAway = matchLength - playerScore;
+    const opponentAway = matchLength - opponentScore;
+
+    if (
+      playerAway > 0 &&
+      opponentAway > 0 &&
+      playerAway <= cubeValue &&
+      opponentAway <= cubeValue
+    ) {
+      return "dmp";
+    }
+  }
+
+  // A one-point match is always DMP, including older data that may not
+  // contain explicit score fields.
+  if (matchLength === 1) return "dmp";
+
+  return "point";
+}
+
 function positionsForKind(kind) {
+  if (kind === "all") return state.positions.slice();
   return state.positions.filter((position) => decisionKind(position) === kind);
+}
+
+function positionsForMatchType(matchType) {
+  if (matchType === "all") return state.positions.slice();
+  return state.positions.filter((position) => positionMatchType(position) === matchType);
 }
 
 function filteredPositionsForKind(kind) {
   let pool = positionsForKind(kind);
+  if (state.matchType !== "all") {
+    pool = pool.filter((position) => positionMatchType(position) === state.matchType);
+  }
   if (state.filters.task) pool = pool.filter(isChallenge);
   if (state.filters.new) pool = pool.filter(isNewPosition);
   return pool;
@@ -485,6 +547,18 @@ function displayedPlayedAction(position) {
   return played;
 }
 
+function checkerCandidateHasRates(candidate) {
+  if (!candidate) return false;
+  return [
+    "winRate",
+    "loseRate",
+    "gammonWinRate",
+    "gammonLoseRate",
+    "backgammonWinRate",
+    "backgammonLoseRate",
+  ].every((key) => candidate[key] != null && Number.isFinite(Number(candidate[key])));
+}
+
 function actionAnalysisHTML(position) {
   const playedAction = displayedPlayedAction(position);
   const isPlayed = (action) => playedAction && String(action || "").trim() === playedAction;
@@ -551,15 +625,16 @@ function actionAnalysisHTML(position) {
   return `<div class="action-list">${candidates.map((candidate, index) => {
     const best = index === 0 || Number(candidate.rank) === 1;
     const tone = best ? "" : errorToneClass(candidate.equityLoss, { lossMagnitude: true });
+    const inspectable = checkerCandidateHasRates(candidate);
     return `
-      <div class="action-option ${best ? "is-best" : ""}">
+      <div class="action-option ${best ? "is-best" : ""} ${inspectable ? "is-checker-candidate" : ""}"${inspectable ? ` data-checker-candidate-index="${index}" role="button" tabindex="0"` : ""}>
         <span class="action-text ${isPlayed(candidate.action) ? "is-played" : ""}">${escapeHTML(candidate.action || "—")}</span>
         <span class="action-error ${best ? "best-marker" : tone}">${escapeHTML(best ? "BEST" : formatError(candidate.equityLoss))}</span>
       </div>`;
   }).join("")}</div>`;
 }
 
-function summaryAnalysisHTML(position) {
+function summaryAnalysisHTML(position, checkerCandidate = null) {
   const pips = pipCounts(position);
   const pipDisplay = pipDisplayValues(pips);
   const isTake = position.decisionKind === "take";
@@ -574,20 +649,27 @@ function summaryAnalysisHTML(position) {
     ? position.quizOpponentScore
     : position.opponentScore;
   const rawCubeValue = position.cubeValue;
-  const winRate = isTake && position.quizWinRate != null ? position.quizWinRate : position.winRate;
-  const loseRate = isTake && position.quizLoseRate != null ? position.quizLoseRate : position.loseRate;
+  const checkerRateSource = position.decisionKind === "checker" && checkerCandidate
+    ? checkerCandidate
+    : position;
+  const winRate = isTake && position.quizWinRate != null
+    ? position.quizWinRate
+    : checkerRateSource.winRate;
+  const loseRate = isTake && position.quizLoseRate != null
+    ? position.quizLoseRate
+    : checkerRateSource.loseRate;
   const gammonWinRate = isTake && position.quizGammonWinRate != null
     ? position.quizGammonWinRate
-    : position.gammonWinRate;
+    : checkerRateSource.gammonWinRate;
   const gammonLoseRate = isTake && position.quizGammonLoseRate != null
     ? position.quizGammonLoseRate
-    : position.gammonLoseRate;
+    : checkerRateSource.gammonLoseRate;
   const backgammonWinRate = isTake && position.quizBackgammonWinRate != null
     ? position.quizBackgammonWinRate
-    : position.backgammonWinRate;
+    : checkerRateSource.backgammonWinRate;
   const backgammonLoseRate = isTake && position.quizBackgammonLoseRate != null
     ? position.quizBackgammonLoseRate
-    : position.backgammonLoseRate;
+    : checkerRateSource.backgammonLoseRate;
 
   const rawMatchLength = Number(position.matchLength) || 0;
   const isDmp = rawMatchLength === 1;
@@ -813,10 +895,10 @@ function updateTotals() {
 }
 
 function updateCounts() {
-  elements.counts.forEach((element) => {
-    const kind = element.dataset.count;
-    element.textContent = String(filteredPositionsForKind(kind).length);
-  });
+  const matchTotal = positionsForMatchType(state.matchType).length;
+  const filteredKindCount = filteredPositionsForKind(state.currentKind).length;
+  if (elements.matchCount) elements.matchCount.textContent = String(matchTotal);
+  if (elements.kindCount) elements.kindCount.textContent = String(filteredKindCount);
 }
 
 function sourceFileLabel(position) {
@@ -842,6 +924,46 @@ function populateAnswerData() {
 function resetSummaryTextScroll() {
   const scroller = elements.summaryAnalysis.querySelector(".summary-text-scroll");
   if (scroller) scroller.scrollTop = 0;
+}
+
+function selectCheckerCandidate(index) {
+  if (!state.current || !state.answered || state.current.decisionKind !== "checker") return;
+
+  const candidates = (Array.isArray(state.current.candidates) ? state.current.candidates : [])
+    .filter((candidate) => {
+      const loss = Number(candidate?.equityLoss);
+      return Number.isFinite(loss) && loss >= 0 && loss < 100;
+    })
+    .slice()
+    .sort((a, b) => Number(a.rank || 0) - Number(b.rank || 0));
+
+  const candidate = candidates[Number(index)];
+  if (!checkerCandidateHasRates(candidate)) return;
+
+  elements.actionAnalysis
+    .querySelectorAll(".action-option.is-selected")
+    .forEach((row) => row.classList.remove("is-selected"));
+
+  const selected = elements.actionAnalysis.querySelector(
+    `[data-checker-candidate-index="${Number(index)}"]`,
+  );
+  if (selected) selected.classList.add("is-selected");
+
+  elements.summaryAnalysis.innerHTML = summaryAnalysisHTML(state.current, candidate);
+  elements.summaryAnalysis.scrollTop = 0;
+  resetSummaryTextScroll();
+}
+
+function handleCheckerCandidateInteraction(event) {
+  if (!state.current || !state.answered || state.current.decisionKind !== "checker") return;
+
+  const row = event.target.closest?.("[data-checker-candidate-index]");
+  if (!row || !elements.actionAnalysis.contains(row)) return;
+
+  if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+  if (event.type === "keydown") event.preventDefault();
+
+  selectCheckerCandidate(row.dataset.checkerCandidateIndex);
 }
 
 function resetAnswerUI() {
@@ -908,7 +1030,8 @@ function renderCurrent() {
   elements.empty.hidden = true;
   elements.board.fetchPriority = "high";
   elements.board.src = absoluteBoardUrl(state.current);
-  elements.board.alt = `${KIND_LABELS[state.currentKind]} quiz position`;
+  const currentKindLabel = KIND_LABELS[decisionKind(state.current)] || KIND_LABELS[state.currentKind] || "Position";
+  elements.board.alt = `${currentKindLabel} quiz position`;
   refillBoardQueue();
   updatePositionRecord();
   populateAnswerData();
@@ -957,21 +1080,116 @@ function judge(result) {
   selectNext();
 }
 
+function kindDisplayLabels(kind) {
+  return {
+    full: KIND_LABELS[kind] || "Checker Play",
+    short: kind === "checker"
+      ? "Checker"
+      : kind === "double"
+        ? "Double"
+        : kind === "take"
+          ? "Take"
+          : "Checker",
+  };
+}
+
+function matchTypeDisplayLabels(matchType) {
+  return {
+    full: MATCH_TYPE_LABELS[matchType] || "Point Match",
+    short: matchType === "point" ? "Point" : (MATCH_TYPE_LABELS[matchType] || "Point"),
+  };
+}
+
+function setSelectorLabels(button, labels) {
+  if (!button) return;
+  const full = button.querySelector(".selector-label-full");
+  const short = button.querySelector(".selector-label-short");
+  if (full) full.textContent = labels.full;
+  if (short) short.textContent = labels.short;
+}
+
+function syncKindButtons() {
+  const dmpLocked = state.matchType === "dmp";
+  const displayedKind = dmpLocked ? "checker" : state.currentKind;
+
+  setSelectorLabels(elements.kindSelector, kindDisplayLabels(displayedKind));
+
+  if (elements.kindSelector) {
+    elements.kindSelector.disabled = dmpLocked;
+    elements.kindSelector.setAttribute(
+      "aria-label",
+      dmpLocked
+        ? "Position type: Checker Play (DMP only)"
+        : `Position type: ${KIND_LABELS[state.currentKind]}`,
+    );
+  }
+
+  elements.kindSelectorSlot?.classList.toggle("is-disabled", dmpLocked);
+}
+
 function setKind(kind) {
-  if (!KIND_LABELS[kind]) return;
+  if (!KIND_ORDER.includes(kind) || state.matchType === "dmp") return;
   state.currentKind = kind;
   state.current = null;
   resetBoardQueue();
-  elements.tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.kind === kind));
+  syncKindButtons();
   saveSettings();
   renderCurrent();
 }
 
+function syncMatchTypeButtons() {
+  setSelectorLabels(elements.matchSelector, matchTypeDisplayLabels(state.matchType));
+  if (elements.matchSelector) {
+    elements.matchSelector.setAttribute("aria-label", `Match type: ${MATCH_TYPE_LABELS[state.matchType]}`);
+  }
+}
+
+function setMatchType(matchType) {
+  if (!MATCH_TYPE_ORDER.includes(matchType)) return;
+  state.matchType = matchType;
+
+  if (matchType === "dmp") {
+    state.currentKind = "checker";
+  }
+
+  state.current = null;
+  resetBoardQueue();
+  syncMatchTypeButtons();
+  syncKindButtons();
+  saveSettings();
+  renderCurrent();
+}
+
+function cycleOptionValue(order, current, delta) {
+  const currentIndex = Math.max(0, order.indexOf(current));
+  const nextIndex = (currentIndex + Number(delta) + order.length) % order.length;
+  return order[nextIndex];
+}
+
+function cycleKind(delta) {
+  if (state.matchType === "dmp") return;
+  setKind(cycleOptionValue(KIND_ORDER, state.currentKind, delta));
+}
+
+function cycleMatchType(delta) {
+  setMatchType(cycleOptionValue(MATCH_TYPE_ORDER, state.matchType, delta));
+}
+
+function cycleSelector(selector, delta) {
+  if (selector === "kind") cycleKind(delta);
+  if (selector === "match") cycleMatchType(delta);
+}
+
 function syncFilterButtons() {
   elements.filterButtons.forEach((button) => {
-    const active = Boolean(state.filters[button.dataset.filter]);
+    const filter = button.dataset.filter;
+    const active = Boolean(state.filters[filter]);
+    const activeLabel = filter === "task" ? "Task" : "New";
+    const label = button.querySelector(".filter-label");
+    if (label) label.textContent = active ? activeLabel : "ALL";
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
+    button.setAttribute("aria-label", `${activeLabel} filter: ${active ? activeLabel : "ALL"}`);
   });
 }
 
@@ -986,7 +1204,7 @@ function toggleFilter(filter) {
 }
 
 function installSmartphoneZoomGuard() {
-  const smartphone = window.matchMedia("(max-width: 760px)");
+  const smartphone = window.matchMedia("(max-width: 790px)");
   const preventGesture = (event) => {
     if (smartphone.matches) event.preventDefault();
   };
@@ -1015,16 +1233,52 @@ function installSmartphoneZoomGuard() {
 }
 
 function installEvents() {
-  elements.tabs.forEach((tab) => {
-    tab.addEventListener("click", () => setKind(tab.dataset.kind));
-  });
+  elements.kindSelector.addEventListener("click", () => cycleKind(1));
+  elements.matchSelector.addEventListener("click", () => cycleMatchType(1));
+
   elements.filterButtons.forEach((button) => {
     button.addEventListener("click", () => toggleFilter(button.dataset.filter));
   });
+
+  const installSelectorSwipe = (slot, selector) => {
+    let startPoint = null;
+
+    slot.addEventListener("touchstart", (event) => {
+      if (!window.matchMedia("(max-width: 790px)").matches || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      startPoint = { x: touch.clientX, y: touch.clientY };
+    }, { passive: true });
+
+    slot.addEventListener("touchend", (event) => {
+      if (!startPoint || !window.matchMedia("(max-width: 790px)").matches) {
+        startPoint = null;
+        return;
+      }
+
+      const touch = event.changedTouches?.[0];
+      if (!touch) {
+        startPoint = null;
+        return;
+      }
+
+      const dx = touch.clientX - startPoint.x;
+      const dy = touch.clientY - startPoint.y;
+      startPoint = null;
+
+      if (Math.abs(dy) < 28 || Math.abs(dy) <= Math.abs(dx)) return;
+      cycleSelector(selector, dy < 0 ? 1 : -1);
+    }, { passive: true });
+  };
+
+  installSelectorSwipe(elements.kindSelectorSlot, "kind");
+  installSelectorSwipe(elements.matchSelectorSlot, "match");
+
   elements.answerButton.addEventListener("click", showAnswer);
   elements.correctButton.addEventListener("click", () => judge("correct"));
   elements.wrongButton.addEventListener("click", () => judge("wrong"));
   elements.nextButton.addEventListener("click", selectNext);
+  elements.actionAnalysis.addEventListener("click", handleCheckerCandidateInteraction);
+  elements.actionAnalysis.addEventListener("keydown", handleCheckerCandidateInteraction);
 }
 
 async function syncPositions({ initial = false } = {}) {
@@ -1076,10 +1330,20 @@ async function start() {
   const settings = localSettings || (
     backupSettings && typeof backupSettings === "object" ? backupSettings : {}
   );
-  if (KIND_LABELS[settings.kind]) state.currentKind = settings.kind;
-  state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly);
-  state.filters.new = Boolean(settings.newOnly);
-  elements.tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.kind === state.currentKind));
+  if (KIND_ORDER.includes(settings.kind)) state.currentKind = settings.kind;
+  if (MATCH_TYPE_ORDER.includes(settings.matchType)) state.matchType = settings.matchType;
+  if (state.matchType === "dmp") state.currentKind = "checker";
+  if (Number(settings.filterModeVersion) >= FILTER_MODE_VERSION) {
+    state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly ?? true);
+    state.filters.new = Boolean(settings.newOnly ?? true);
+  } else {
+    // The redesigned third/fourth selectors start at Task / New once, even
+    // when an older saved setting had the former toggle buttons turned off.
+    state.filters.task = true;
+    state.filters.new = true;
+  }
+  syncKindButtons();
+  syncMatchTypeButtons();
   syncFilterButtons();
   installSmartphoneZoomGuard();
   installEvents();
