@@ -392,19 +392,25 @@ run("ALL decision kind and match type filter compose with Task/New", () => {
   evaluate('state.matchType = "all"; state.filters = {task:false,new:false};');
 });
 
-run("Kind selector cycles Checker / Double / Take", () => {
+run("Kind selector cycles Checker / Double / Take / ALL", () => {
   assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", 1)'), "double");
   assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "double", 1)'), "take");
-  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "take", 1)'), "checker");
-  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", -1)'), "take");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "take", 1)'), "all");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "all", 1)'), "checker");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", -1)'), "all");
+  assert.equal(evaluate('kindDisplayLabels("all").full'), "ALL");
+  assert.equal(evaluate('kindDisplayLabels("all").short'), "ALL");
 });
 
-run("Match selector cycles Point / Unlimited / DMP", () => {
+run("Match selector cycles Point / Unlimited / DMP / ALL", () => {
   assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", 1)'), "unlimited");
   assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "unlimited", 1)'), "dmp");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "dmp", 1)'), "point");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", -1)'), "dmp");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "dmp", 1)'), "all");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "all", 1)'), "point");
+  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", -1)'), "all");
   assert.equal(evaluate('matchTypeDisplayLabels("point").short'), "Point");
+  assert.equal(evaluate('matchTypeDisplayLabels("all").full'), "ALL");
+  assert.equal(evaluate('matchTypeDisplayLabels("all").short'), "ALL");
 });
 
 
@@ -430,22 +436,29 @@ run("Match count stays total while kind count follows Task/New filters", () => {
 });
 
 
-run("DMP forces Checker Play and disables the second selector", () => {
+run("DMP preserves the selected decision kind and keeps the selector active", () => {
   evaluate(`
-    state.currentKind = "take";
-    state.matchType = "point";
+    state.positions = [
+      {id:"DMP-C",decisionKind:"checker",matchLength:1},
+      {id:"PM-D",decisionKind:"double",matchLength:7,playerScore:0,opponentScore:0}
+    ];
+    state.currentKind = "double";
+    state.matchType = "unlimited";
     setMatchType("dmp");
   `);
 
   assert.equal(evaluate("state.matchType"), "dmp");
-  assert.equal(evaluate("state.currentKind"), "checker");
-  assert.equal(evaluate("elements.kindSelector.disabled"), true);
+  assert.equal(evaluate("state.currentKind"), "double");
+  assert.equal(evaluate("elements.kindSelector.disabled"), false);
+  assert.equal(evaluate("activePool().length"), 0);
 
   evaluate("cycleKind(1)");
-  assert.equal(evaluate("state.currentKind"), "checker");
+  assert.equal(evaluate("state.currentKind"), "take");
 
+  evaluate('setMatchType("all")');
+  assert.equal(evaluate("state.currentKind"), "take");
   evaluate('setMatchType("point")');
-  assert.equal(evaluate("elements.kindSelector.disabled"), false);
+  assert.equal(evaluate("state.currentKind"), "take");
 });
 
 

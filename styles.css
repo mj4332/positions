@@ -147,9 +147,10 @@ main { width: min(920px, calc(100% - 24px)); margin: 0 auto; padding: 16px 0 48p
 .menu-selector {
   height: 44px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 2px;
   font-size: var(--font-sm);
   line-height: 1;
   white-space: nowrap;
@@ -166,24 +167,9 @@ main { width: min(920px, calc(100% - 24px)); margin: 0 auto; padding: 16px 0 48p
 .filter-tab:focus,
 .filter-tab:active,
 .filter-tab:focus-visible { background: var(--black); }
-.selector-slot.is-disabled {
-  opacity: 1;
-}
-
-.selector-slot.is-disabled .menu-selector {
-  cursor: default;
-  color: var(--gray);
-  opacity: .45;
-}
-
-.selector-slot.is-disabled .menu-selector:hover,
-.selector-slot.is-disabled .menu-selector:focus,
-.selector-slot.is-disabled .menu-selector:active {
-  background: var(--black);
-}
-
 
 .selector-count {
+  display: block;
   color: var(--gray);
   font-size: var(--font-xs);
   font-weight: 600;
@@ -1017,8 +1003,20 @@ main { width: min(920px, calc(100% - 24px)); margin: 0 auto; padding: 16px 0 48p
 
 .stat-line.side-white .stat-label { color: var(--black); background: var(--white); }
 
+.menu-selector.is-active,
 .filter-tab.is-active {
   color: var(--white);
+  background: var(--active);
+}
+
+.menu-selector.is-active:hover,
+.menu-selector.is-active:focus,
+.menu-selector.is-active:active,
+.menu-selector.is-active:focus-visible,
+.filter-tab.is-active:hover,
+.filter-tab.is-active:focus,
+.filter-tab.is-active:active,
+.filter-tab.is-active:focus-visible {
   background: var(--active);
 }
 

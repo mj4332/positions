@@ -4,7 +4,7 @@ const POSITIONS_ROOT = new URL("./", window.location.href).href;
 const DATA_URL = `${POSITIONS_ROOT}data/positions.json`;
 const STORAGE_KEY = "yanagi-backgammon-quiz-progress-v1";
 const SETTINGS_KEY = "yanagi-backgammon-quiz-settings-v1";
-const FILTER_MODE_VERSION = 2;
+const FILTER_MODE_VERSION = 3;
 const DAILY_STORAGE_KEY = "yanagi-backgammon-quiz-daily-v1";
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const BOARD_PRELOAD_COUNT = 3;
@@ -14,26 +14,26 @@ const LOCAL_DB_STORE = "records";
 const NEW_POSITION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const KIND_LABELS = {
-  all: "All",
+  all: "ALL",
   checker: "Checker Play",
   double: "Double Action",
   take: "Take Action",
 };
 
 const MATCH_TYPE_LABELS = {
-  all: "All",
+  all: "ALL",
   point: "Point Match",
   dmp: "DMP",
   unlimited: "Unlimited",
 };
 
-const KIND_ORDER = ["checker", "double", "take"];
-const MATCH_TYPE_ORDER = ["point", "unlimited", "dmp"];
+const KIND_ORDER = ["checker", "double", "take", "all"];
+const MATCH_TYPE_ORDER = ["point", "unlimited", "dmp", "all"];
 
 const state = {
   positions: [],
-  currentKind: "checker",
-  matchType: "point",
+  currentKind: "all",
+  matchType: "all",
   current: null,
   answered: false,
   progress: {},
@@ -41,7 +41,7 @@ const state = {
   dailyResetTimer: null,
   dataVersion: "",
   boardQueue: [],
-  filters: { task: true, new: true },
+  filters: { task: false, new: false },
 };
 
 const elements = {
@@ -1089,7 +1089,7 @@ function kindDisplayLabels(kind) {
         ? "Double"
         : kind === "take"
           ? "Take"
-          : "Checker",
+          : "ALL",
   };
 }
 
@@ -1109,26 +1109,22 @@ function setSelectorLabels(button, labels) {
 }
 
 function syncKindButtons() {
-  const dmpLocked = state.matchType === "dmp";
-  const displayedKind = dmpLocked ? "checker" : state.currentKind;
-
-  setSelectorLabels(elements.kindSelector, kindDisplayLabels(displayedKind));
+  setSelectorLabels(elements.kindSelector, kindDisplayLabels(state.currentKind));
 
   if (elements.kindSelector) {
-    elements.kindSelector.disabled = dmpLocked;
+    elements.kindSelector.disabled = false;
     elements.kindSelector.setAttribute(
       "aria-label",
-      dmpLocked
-        ? "Position type: Checker Play (DMP only)"
-        : `Position type: ${KIND_LABELS[state.currentKind]}`,
+      `Position type: ${KIND_LABELS[state.currentKind]}`,
     );
   }
 
-  elements.kindSelectorSlot?.classList.toggle("is-disabled", dmpLocked);
+  elements.kindSelector?.classList.toggle("is-active", state.currentKind !== "all");
+  elements.kindSelectorSlot?.classList.remove("is-disabled");
 }
 
 function setKind(kind) {
-  if (!KIND_ORDER.includes(kind) || state.matchType === "dmp") return;
+  if (!KIND_ORDER.includes(kind)) return;
   state.currentKind = kind;
   state.current = null;
   resetBoardQueue();
@@ -1140,6 +1136,7 @@ function setKind(kind) {
 function syncMatchTypeButtons() {
   setSelectorLabels(elements.matchSelector, matchTypeDisplayLabels(state.matchType));
   if (elements.matchSelector) {
+    elements.matchSelector.classList.toggle("is-active", state.matchType !== "all");
     elements.matchSelector.setAttribute("aria-label", `Match type: ${MATCH_TYPE_LABELS[state.matchType]}`);
   }
 }
@@ -1147,10 +1144,6 @@ function syncMatchTypeButtons() {
 function setMatchType(matchType) {
   if (!MATCH_TYPE_ORDER.includes(matchType)) return;
   state.matchType = matchType;
-
-  if (matchType === "dmp") {
-    state.currentKind = "checker";
-  }
 
   state.current = null;
   resetBoardQueue();
@@ -1167,7 +1160,6 @@ function cycleOptionValue(order, current, delta) {
 }
 
 function cycleKind(delta) {
-  if (state.matchType === "dmp") return;
   setKind(cycleOptionValue(KIND_ORDER, state.currentKind, delta));
 }
 
@@ -1332,15 +1324,12 @@ async function start() {
   );
   if (KIND_ORDER.includes(settings.kind)) state.currentKind = settings.kind;
   if (MATCH_TYPE_ORDER.includes(settings.matchType)) state.matchType = settings.matchType;
-  if (state.matchType === "dmp") state.currentKind = "checker";
-  if (Number(settings.filterModeVersion) >= FILTER_MODE_VERSION) {
-    state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly ?? true);
-    state.filters.new = Boolean(settings.newOnly ?? true);
+  if (Number(settings.filterModeVersion) >= 2) {
+    state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly ?? false);
+    state.filters.new = Boolean(settings.newOnly ?? false);
   } else {
-    // The redesigned third/fourth selectors start at Task / New once, even
-    // when an older saved setting had the former toggle buttons turned off.
-    state.filters.task = true;
-    state.filters.new = true;
+    state.filters.task = false;
+    state.filters.new = false;
   }
   syncKindButtons();
   syncMatchTypeButtons();
