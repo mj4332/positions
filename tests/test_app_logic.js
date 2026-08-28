@@ -27,6 +27,8 @@ function dummyElement() {
     removeAttribute() {},
     setAttribute() {},
     querySelector() { return dummyElement(); },
+    querySelectorAll() { return []; },
+    contains() { return true; },
   };
 }
 
@@ -392,30 +394,37 @@ run("ALL decision kind and match type filter compose with Task/New", () => {
   evaluate('state.matchType = "all"; state.filters = {task:false,new:false};');
 });
 
-run("Kind selector cycles Checker / Double / Take / ALL", () => {
+run("Kind selector cycles Checker / Double / Take only", () => {
+  assert.deepEqual(Array.from(evaluate("KIND_ORDER")), ["checker", "double", "take"]);
   assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", 1)'), "double");
   assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "double", 1)'), "take");
-  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "take", 1)'), "all");
-  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "all", 1)'), "checker");
-  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", -1)'), "all");
-  assert.equal(evaluate('kindDisplayLabels("all").full'), "ALL");
-  assert.equal(evaluate('kindDisplayLabels("all").short'), "ALL");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "take", 1)'), "checker");
+  assert.equal(evaluate('cycleOptionValue(KIND_ORDER, "checker", -1)'), "take");
 });
 
-run("Match selector cycles Point / Unlimited / DMP / ALL", () => {
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", 1)'), "unlimited");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "unlimited", 1)'), "dmp");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "dmp", 1)'), "all");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "all", 1)'), "point");
-  assert.equal(evaluate('cycleOptionValue(MATCH_TYPE_ORDER, "point", -1)'), "all");
-  assert.equal(evaluate('matchTypeDisplayLabels("point").short'), "Point");
+run("Checker match selector includes DMP, Double/Take selector skips it", () => {
+  assert.deepEqual(
+    Array.from(evaluate('matchTypeOrderForKind("checker")')),
+    ["all", "point", "unlimited", "dmp"],
+  );
+  assert.deepEqual(
+    Array.from(evaluate('matchTypeOrderForKind("double")')),
+    ["all", "point", "unlimited"],
+  );
+  assert.deepEqual(
+    Array.from(evaluate('matchTypeOrderForKind("take")')),
+    ["all", "point", "unlimited"],
+  );
+  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("checker"), "unlimited", 1)'), "dmp");
+  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("double"), "unlimited", 1)'), "all");
+  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("take"), "all", -1)'), "unlimited");
+  assert.equal(evaluate('matchTypeDisplayLabels("point").short'), "Point Match");
   assert.equal(evaluate('matchTypeDisplayLabels("all").full'), "ALL");
-  assert.equal(evaluate('matchTypeDisplayLabels("all").short'), "ALL");
 });
 
 
 
-run("Match count stays total while kind count follows Task/New filters", () => {
+run("Kind count stays total while match count follows all active filters", () => {
   evaluate(`
     state.positions = [
       {id:"C7",decisionKind:"checker",matchLength:7,isNew:true},
@@ -431,34 +440,41 @@ run("Match count stays total while kind count follows Task/New filters", () => {
     updateCounts();
   `);
 
-  assert.equal(evaluate("elements.kindCount.textContent"), "1");
-  assert.equal(evaluate("elements.matchCount.textContent"), "3");
+  assert.equal(evaluate("elements.kindCount.textContent"), "3");
+  assert.equal(evaluate("elements.matchCount.textContent"), "1");
 });
 
 
-run("DMP preserves the selected decision kind and keeps the selector active", () => {
+run("Checker + DMP switches match type to ALL when changing to Double/Take", () => {
   evaluate(`
     state.positions = [
       {id:"DMP-C",decisionKind:"checker",matchLength:1},
       {id:"PM-D",decisionKind:"double",matchLength:7,playerScore:0,opponentScore:0}
     ];
-    state.currentKind = "double";
-    state.matchType = "unlimited";
-    setMatchType("dmp");
+    state.currentKind = "checker";
+    state.matchType = "dmp";
+    setKind("double");
   `);
 
-  assert.equal(evaluate("state.matchType"), "dmp");
   assert.equal(evaluate("state.currentKind"), "double");
+  assert.equal(evaluate("state.matchType"), "all");
   assert.equal(evaluate("elements.kindSelector.disabled"), false);
-  assert.equal(evaluate("activePool().length"), 0);
 
-  evaluate("cycleKind(1)");
+  evaluate('state.currentKind = "checker"; state.matchType = "dmp"; setKind("take");');
   assert.equal(evaluate("state.currentKind"), "take");
+  assert.equal(evaluate("state.matchType"), "all");
+});
 
-  evaluate('setMatchType("all")');
-  assert.equal(evaluate("state.currentKind"), "take");
+run("Double/Take reject DMP but keep normal match selections", () => {
+  evaluate('state.currentKind = "double"; state.matchType = "all";');
+  evaluate('setMatchType("dmp")');
+  assert.equal(evaluate("state.matchType"), "all");
   evaluate('setMatchType("point")');
-  assert.equal(evaluate("state.currentKind"), "take");
+  assert.equal(evaluate("state.matchType"), "point");
+  evaluate('setMatchType("unlimited")');
+  assert.equal(evaluate("state.matchType"), "unlimited");
+  evaluate('cycleMatchType(1)');
+  assert.equal(evaluate("state.matchType"), "all");
 });
 
 
@@ -499,6 +515,93 @@ run("Cube-aware DMP positions sort into DMP instead of Point Match", () => {
   assert.deepEqual(
     Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
     ["POINT-99-11-C1"],
+  );
+});
+
+
+run("Pre-answer PIP starts hidden as -- and toggles without answering", () => {
+  context.pipPosition = {
+    id: "PIP1",
+    decisionKind: "checker",
+    position: Array(26).fill(0),
+    matchLength: 7,
+    playerScore: 0,
+    opponentScore: 0,
+    cubeValue: 1,
+    isCrawford: false,
+    isPostCrawford: false,
+    winRate: 0.5,
+    loseRate: 0.5,
+    gammonWinRate: 0,
+    gammonLoseRate: 0,
+    backgammonWinRate: 0,
+    backgammonLoseRate: 0,
+  };
+  context.pipPosition.position[1] = 15;
+  context.pipPosition.position[24] = -15;
+
+  const html = evaluate("summaryAnalysisHTML(pipPosition)");
+  assert.match(html, /class="pip-placeholder">--<\/span>/);
+  assert.match(html, /class="pip-real">15<\/span>/);
+
+  evaluate("state.current = pipPosition; state.answered = false; state.pipRevealed = false");
+  evaluate("togglePreAnswerPip()");
+  assert.equal(evaluate("state.pipRevealed"), true);
+  assert.equal(evaluate("state.answered"), false);
+  evaluate("togglePreAnswerPip()");
+  assert.equal(evaluate("state.pipRevealed"), false);
+});
+
+run("Checker candidate can be selected and deselected by pressing the same move", () => {
+  context.checkerTogglePosition = {
+    id: "CHK1",
+    decisionKind: "checker",
+    decisionType: "move",
+    position: Array(26).fill(0),
+    matchLength: 7,
+    playerScore: 0,
+    opponentScore: 0,
+    cubeValue: 1,
+    isCrawford: false,
+    isPostCrawford: false,
+    winRate: 0.50,
+    loseRate: 0.50,
+    gammonWinRate: 0.10,
+    gammonLoseRate: 0.10,
+    backgammonWinRate: 0.01,
+    backgammonLoseRate: 0.01,
+    quizBoardImage: "assets/boards-quiz/CHK1.svg",
+    candidates: [{
+      rank: 1,
+      action: "13/8 6/5",
+      moveBoardImage: "assets/boards-moves/CHK1-1.svg",
+      equityLoss: 0,
+      pipBlack: 40,
+      pipWhite: 40,
+      winRate: 0.60,
+      loseRate: 0.40,
+      gammonWinRate: 0.12,
+      gammonLoseRate: 0.08,
+      backgammonWinRate: 0.02,
+      backgammonLoseRate: 0.01,
+    }],
+  };
+  evaluate("state.current = checkerTogglePosition; state.answered = true; state.selectedCheckerCandidateIndex = null");
+  evaluate("selectCheckerCandidate(0)");
+  assert.equal(evaluate("state.selectedCheckerCandidateIndex"), 0);
+  assert.match(evaluate("elements.summaryAnalysis.innerHTML"), />60\.0%<\/span>/);
+  assert.match(evaluate("elements.summaryAnalysis.innerHTML"), /class="pip-real">40<\/span>/);
+  assert.equal(
+    evaluate("elements.board.src"),
+    "https://example.test/position-drill/assets/boards-moves/CHK1-1.svg",
+  );
+
+  evaluate("selectCheckerCandidate(0)");
+  assert.equal(evaluate("state.selectedCheckerCandidateIndex"), null);
+  assert.match(evaluate("elements.summaryAnalysis.innerHTML"), />50\.0%<\/span>/);
+  assert.equal(
+    evaluate("elements.board.src"),
+    "https://example.test/position-drill/assets/boards-quiz/CHK1.svg",
   );
 });
 

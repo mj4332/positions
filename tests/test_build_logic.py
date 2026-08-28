@@ -33,6 +33,15 @@ class BuildLogicTests(unittest.TestCase):
             )
         )
 
+
+    def test_pip_counts_for_view_returns_both_sides_after_move(self) -> None:
+        points = [0] * 26
+        points[6] = 2
+        points[25] = 1
+        points[24] = -1
+        points[0] = -1
+        self.assertEqual(build.pip_counts_for_view(points), (37, 26))
+
     def test_cube_value_number(self) -> None:
         self.assertEqual(build.cube_value_number(0), 1)
         self.assertEqual(build.cube_value_number(1), 2)
@@ -51,6 +60,33 @@ class BuildLogicTests(unittest.TestCase):
                 self.assertEqual(
                     [path.name for path in build.imported_source_files()],
                     ["a.XGP", "b.XG"],
+                )
+            finally:
+                build.IMPORTS_DIR = original
+
+    def test_imported_source_files_reads_nested_subfolders_recursively(self) -> None:
+        original = build.IMPORTS_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "archive" / "2026" / "august"
+            nested.mkdir(parents=True)
+            (root / "root.xg").write_bytes(b"x")
+            (nested / "nested.xgp").write_bytes(b"x")
+            (nested / "UPPER.XG").write_bytes(b"x")
+            (nested / "ignore.txt").write_text("x", encoding="utf-8")
+            build.IMPORTS_DIR = root
+            try:
+                relative = [
+                    path.relative_to(root).as_posix()
+                    for path in build.imported_source_files()
+                ]
+                self.assertEqual(
+                    relative,
+                    [
+                        "archive/2026/august/nested.xgp",
+                        "archive/2026/august/UPPER.XG",
+                        "root.xg",
+                    ],
                 )
             finally:
                 build.IMPORTS_DIR = original
@@ -216,6 +252,108 @@ class BuildLogicTests(unittest.TestCase):
             build.compact_move_notation("7/4 7/4*"),
             "7/4*(2)",
         )
+
+
+    def test_checker_move_highlights_track_only_mover_final_checker(self) -> None:
+        before = [0] * 26
+        after = [0] * 26
+        before[13] = 1
+        before[8] = -1
+        after[8] = 1
+        after[0] = -1
+
+        highlights = build.checker_move_highlights(before, after, 1)
+        self.assertEqual(highlights["sign"], 1)
+        self.assertEqual(highlights["points"], {"8": 1})
+        self.assertEqual(highlights["off"], 0)
+        self.assertEqual(highlights["opponentBar"], 1)
+
+    def test_checker_move_highlights_support_white_and_bearoff(self) -> None:
+        before = [0] * 26
+        after = [0] * 26
+        before[1] = -1
+
+        highlights = build.checker_move_highlights(before, after, -1)
+        self.assertEqual(highlights["sign"], -1)
+        self.assertEqual(highlights["points"], {})
+        self.assertEqual(highlights["off"], 1)
+        self.assertEqual(highlights["opponentBar"], 0)
+
+
+    def test_hit_white_bar_highlights_only_newly_hit_checker(self) -> None:
+        before = [0] * 26
+        after = [0] * 26
+        # One white checker was already on the bar; a second is hit by black.
+        before[0] = -1
+        before[8] = -1
+        before[13] = 1
+        after[0] = -2
+        after[8] = 1
+
+        highlights = build.checker_move_highlights(before, after, 1)
+        self.assertEqual(highlights["opponentBar"], 1)
+
+        row = {
+            "id": "TEST-HIT-BAR",
+            "position": after,
+            "matchLength": 7,
+            "onRollScore": 0,
+            "onRollOpponentScore": 0,
+            "cubeOwner": "center",
+            "cubeValue": 1,
+            "diceValues": [],
+        }
+        svg = build.render_board_svg(
+            row,
+            show_pip_counts=False,
+            move_highlights=highlights,
+        )
+        self.assertEqual(
+            svg.count('fill="#ffffff" stroke="#6F5424" stroke-width="4.0"'),
+            1,
+        )
+
+    def test_move_highlight_svg_uses_dark_gold_fill_for_black_and_outline_for_white(self) -> None:
+        base_row = {
+            "id": "TEST-HIGHLIGHT",
+            "position": [0] * 26,
+            "matchLength": 7,
+            "onRollScore": 0,
+            "onRollOpponentScore": 0,
+            "cubeOwner": "center",
+            "cubeValue": 1,
+            "diceValues": [],
+        }
+
+        black_row = dict(base_row)
+        black_row["position"] = [0] * 26
+        black_row["position"][6] = 1
+        black_svg = build.render_board_svg(
+            black_row,
+            show_pip_counts=False,
+            move_highlights={"sign": 1, "points": {"6": 1}, "off": 0},
+        )
+        self.assertIn('fill="#6F5424" stroke="#6F5424"', black_svg)
+
+        black_off_row = dict(base_row)
+        black_off_row["position"] = [0] * 26
+        black_off_row["onRollOff"] = 1
+        black_off_svg = build.render_board_svg(
+            black_off_row,
+            show_pip_counts=False,
+            move_highlights={"sign": 1, "points": {}, "off": 1},
+        )
+        self.assertIn('fill="#6F5424" stroke="#6F5424" stroke-width="1.6"', black_off_svg)
+
+        white_row = dict(base_row)
+        white_row["position"] = [0] * 26
+        white_row["position"][19] = -1
+        white_svg = build.render_board_svg(
+            white_row,
+            show_pip_counts=False,
+            move_highlights={"sign": -1, "points": {"19": 1}, "off": 0},
+        )
+        self.assertIn('fill="#ffffff" stroke="#6F5424" stroke-width="4.0"', white_svg)
 
     def test_unlimited_board_score_is_zero_zero(self) -> None:
         row = {

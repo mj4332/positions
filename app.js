@@ -17,7 +17,7 @@ const KIND_LABELS = {
   all: "ALL",
   checker: "Checker Play",
   double: "Double Action",
-  take: "Take Action",
+  take: "Take/Pass",
 };
 
 const MATCH_TYPE_LABELS = {
@@ -27,15 +27,18 @@ const MATCH_TYPE_LABELS = {
   unlimited: "Unlimited",
 };
 
-const KIND_ORDER = ["checker", "double", "take", "all"];
-const MATCH_TYPE_ORDER = ["point", "unlimited", "dmp", "all"];
+const KIND_ORDER = ["checker", "double", "take"];
+const MATCH_TYPE_ORDER = ["all", "point", "unlimited", "dmp"];
+const CUBE_MATCH_TYPE_ORDER = ["all", "point", "unlimited"];
 
 const state = {
   positions: [],
-  currentKind: "all",
+  currentKind: "checker",
   matchType: "all",
   current: null,
   answered: false,
+  pipRevealed: false,
+  selectedCheckerCandidateIndex: null,
   progress: {},
   daily: { day: "", correct: 0, wrong: 0 },
   dailyResetTimer: null,
@@ -367,11 +370,18 @@ function randomPosition(pool, avoidId = null) {
   return choices[Math.floor(Math.random() * choices.length)] || pool[0];
 }
 
-function absoluteBoardUrl(position) {
-  const path = position.quizBoardImage || position.boardImage || "";
-  const url = new URL(path, POSITIONS_ROOT);
+function absoluteAssetUrl(path) {
+  const url = new URL(path || "", POSITIONS_ROOT);
   if (state.dataVersion) url.searchParams.set("v", state.dataVersion);
   return url.href;
+}
+
+function absoluteBoardUrl(position) {
+  return absoluteAssetUrl(position.quizBoardImage || position.boardImage || "");
+}
+
+function absoluteCheckerMoveBoardUrl(candidate) {
+  return candidate?.moveBoardImage ? absoluteAssetUrl(candidate.moveBoardImage) : "";
 }
 
 const boardPreloadCache = new Map();
@@ -481,6 +491,20 @@ function cubeStateText(position, cubeValue = position.cubeValue) {
   return String(cubeValue ?? "—");
 }
 
+function pipCountsFromPoints(points) {
+  const boardPoints = Array.isArray(points) ? points : [];
+  let black = 0;
+  let white = 0;
+  for (let point = 1; point <= 24; point += 1) {
+    const value = Number(boardPoints[point] || 0);
+    if (value > 0) black += point * value;
+    if (value < 0) white += (25 - point) * -value;
+  }
+  black += 25 * Math.max(Number(boardPoints[25] || 0), 0);
+  white += 25 * Math.max(-Number(boardPoints[0] || 0), 0);
+  return { black, white };
+}
+
 function pipCounts(position) {
   // Keep the drill owner as black/bottom.  For Take Action that means the
   // cube receiver/taker is black, even though the displayed state is still
@@ -488,16 +512,16 @@ function pipCounts(position) {
   const points = position.decisionKind === "take" && Array.isArray(position.quizPosition)
     ? position.quizPosition
     : (Array.isArray(position.position) ? position.position : []);
-  let black = 0;
-  let white = 0;
-  for (let point = 1; point <= 24; point += 1) {
-    const value = Number(points[point] || 0);
-    if (value > 0) black += point * value;
-    if (value < 0) white += (25 - point) * -value;
+  return pipCountsFromPoints(points);
+}
+
+function checkerCandidatePipCounts(position, candidate) {
+  const black = Number(candidate?.pipBlack);
+  const white = Number(candidate?.pipWhite);
+  if (Number.isFinite(black) && Number.isFinite(white)) {
+    return { black, white };
   }
-  black += 25 * Math.max(Number(points[25] || 0), 0);
-  white += 25 * Math.max(-Number(points[0] || 0), 0);
-  return { black, white };
+  return pipCounts(position);
 }
 
 function statLine(label, value, extraClass = "", valueClass = "") {
@@ -635,7 +659,9 @@ function actionAnalysisHTML(position) {
 }
 
 function summaryAnalysisHTML(position, checkerCandidate = null) {
-  const pips = pipCounts(position);
+  const pips = position.decisionKind === "checker" && checkerCandidate
+    ? checkerCandidatePipCounts(position, checkerCandidate)
+    : pipCounts(position);
   const pipDisplay = pipDisplayValues(pips);
   const isTake = position.decisionKind === "take";
 
@@ -725,8 +751,8 @@ function summaryAnalysisHTML(position, checkerCandidate = null) {
         ${statLine("WH", escapeHTML(opponentScoreText), "side-white")}
 
         ${statLine("CB", escapeHTML(isDmp ? "1" : cubeStateText(position, cubeValue)))}
-        ${statLine("PIP", escapeHTML(pipDisplay.black), "", "answer-only-value")}
-        ${statLine("PIP", escapeHTML(pipDisplay.white), "", "answer-only-value")}
+        ${statLine("PIP", `<span class="pip-placeholder">--</span><span class="pip-real">${escapeHTML(pipDisplay.black)}</span>`)}
+        ${statLine("PIP", `<span class="pip-placeholder">--</span><span class="pip-real">${escapeHTML(pipDisplay.white)}</span>`)}
 
         <div aria-hidden="true"></div>
         ${statLine("W", escapeHTML(formatPercent(winRate)), "", "answer-only-value")}
@@ -895,10 +921,15 @@ function updateTotals() {
 }
 
 function updateCounts() {
-  const matchTotal = positionsForMatchType(state.matchType).length;
-  const filteredKindCount = filteredPositionsForKind(state.currentKind).length;
-  if (elements.matchCount) elements.matchCount.textContent = String(matchTotal);
-  if (elements.kindCount) elements.kindCount.textContent = String(filteredKindCount);
+  // 1st menu: total positions for the selected decision kind, independent of
+  // match type / Task / New filters.
+  const kindTotal = positionsForKind(state.currentKind).length;
+
+  // 2nd menu: positions remaining after every active filter is applied.
+  const filteredCount = filteredPositionsForKind(state.currentKind).length;
+
+  if (elements.kindCount) elements.kindCount.textContent = String(kindTotal);
+  if (elements.matchCount) elements.matchCount.textContent = String(filteredCount);
 }
 
 function sourceFileLabel(position) {
@@ -929,6 +960,7 @@ function resetSummaryTextScroll() {
 function selectCheckerCandidate(index) {
   if (!state.current || !state.answered || state.current.decisionKind !== "checker") return;
 
+  const numericIndex = Number(index);
   const candidates = (Array.isArray(state.current.candidates) ? state.current.candidates : [])
     .filter((candidate) => {
       const loss = Number(candidate?.equityLoss);
@@ -937,21 +969,40 @@ function selectCheckerCandidate(index) {
     .slice()
     .sort((a, b) => Number(a.rank || 0) - Number(b.rank || 0));
 
-  const candidate = candidates[Number(index)];
+  const candidate = candidates[numericIndex];
   if (!checkerCandidateHasRates(candidate)) return;
 
   elements.actionAnalysis
     .querySelectorAll(".action-option.is-selected")
     .forEach((row) => row.classList.remove("is-selected"));
 
+  if (state.selectedCheckerCandidateIndex === numericIndex) {
+    state.selectedCheckerCandidateIndex = null;
+    elements.summaryAnalysis.innerHTML = summaryAnalysisHTML(state.current);
+    elements.summaryAnalysis.scrollTop = 0;
+    resetSummaryTextScroll();
+    elements.board.src = absoluteBoardUrl(state.current);
+    elements.board.alt = `${KIND_LABELS.checker} quiz position`;
+    return;
+  }
+
+  state.selectedCheckerCandidateIndex = numericIndex;
   const selected = elements.actionAnalysis.querySelector(
-    `[data-checker-candidate-index="${Number(index)}"]`,
+    `[data-checker-candidate-index="${numericIndex}"]`,
   );
   if (selected) selected.classList.add("is-selected");
 
   elements.summaryAnalysis.innerHTML = summaryAnalysisHTML(state.current, candidate);
   elements.summaryAnalysis.scrollTop = 0;
   resetSummaryTextScroll();
+
+  const moveBoardUrl = absoluteCheckerMoveBoardUrl(candidate);
+  if (moveBoardUrl) {
+    elements.board.src = moveBoardUrl;
+    elements.board.alt = `${candidate.action || "Checker move"} after position`;
+  } else {
+    elements.board.src = absoluteBoardUrl(state.current);
+  }
 }
 
 function handleCheckerCandidateInteraction(event) {
@@ -968,7 +1019,10 @@ function handleCheckerCandidateInteraction(event) {
 
 function resetAnswerUI() {
   state.answered = false;
+  state.pipRevealed = false;
+  state.selectedCheckerCandidateIndex = null;
   elements.card.classList.remove("is-answered");
+  elements.card.classList.remove("is-pip-revealed");
   elements.answerPanel.hidden = false;
   elements.answerButton.hidden = false;
   elements.judgeButtons.hidden = true;
@@ -983,11 +1037,14 @@ function resetAnswerUI() {
 function renderEmptyDrillState() {
   state.current = null;
   state.answered = false;
+  state.pipRevealed = false;
+  state.selectedCheckerCandidateIndex = null;
 
   // Keep every layout area mounted so filtering to zero positions does not
   // cause the page to jump or collapse.
   elements.card.hidden = false;
   elements.card.classList.remove("is-answered");
+  elements.card.classList.remove("is-pip-revealed");
   elements.card.classList.add("is-empty");
   elements.empty.hidden = true;
 
@@ -1062,9 +1119,18 @@ function selectNext() {
   renderCurrent();
 }
 
+function togglePreAnswerPip() {
+  if (!state.current || state.answered) return;
+  state.pipRevealed = !state.pipRevealed;
+  elements.card.classList.toggle("is-pip-revealed", state.pipRevealed);
+}
+
 function showAnswer() {
   if (!state.current) return;
   state.answered = true;
+  state.pipRevealed = false;
+  state.selectedCheckerCandidateIndex = null;
+  elements.card.classList.remove("is-pip-revealed");
   elements.actionAnalysis.scrollTop = 0;
   elements.summaryAnalysis.scrollTop = 0;
   resetSummaryTextScroll();
@@ -1088,7 +1154,7 @@ function kindDisplayLabels(kind) {
       : kind === "double"
         ? "Double"
         : kind === "take"
-          ? "Take"
+          ? "Take/Pass"
           : "ALL",
   };
 }
@@ -1096,7 +1162,7 @@ function kindDisplayLabels(kind) {
 function matchTypeDisplayLabels(matchType) {
   return {
     full: MATCH_TYPE_LABELS[matchType] || "Point Match",
-    short: matchType === "point" ? "Point" : (MATCH_TYPE_LABELS[matchType] || "Point"),
+    short: matchType === "point" ? "Point Match" : (MATCH_TYPE_LABELS[matchType] || "Point"),
   };
 }
 
@@ -1119,16 +1185,27 @@ function syncKindButtons() {
     );
   }
 
-  elements.kindSelector?.classList.toggle("is-active", state.currentKind !== "all");
+  // The first selector (Checker / Double / Take) never uses the gold active fill.
+  elements.kindSelector?.classList.remove("is-active");
   elements.kindSelectorSlot?.classList.remove("is-disabled");
+}
+
+function matchTypeOrderForKind(kind = state.currentKind) {
+  return kind === "checker" ? MATCH_TYPE_ORDER : CUBE_MATCH_TYPE_ORDER;
+}
+
+function normalizeMatchTypeForKind(kind, matchType) {
+  return matchTypeOrderForKind(kind).includes(matchType) ? matchType : "all";
 }
 
 function setKind(kind) {
   if (!KIND_ORDER.includes(kind)) return;
   state.currentKind = kind;
+  state.matchType = normalizeMatchTypeForKind(kind, state.matchType);
   state.current = null;
   resetBoardQueue();
   syncKindButtons();
+  syncMatchTypeButtons();
   saveSettings();
   renderCurrent();
 }
@@ -1136,13 +1213,14 @@ function setKind(kind) {
 function syncMatchTypeButtons() {
   setSelectorLabels(elements.matchSelector, matchTypeDisplayLabels(state.matchType));
   if (elements.matchSelector) {
-    elements.matchSelector.classList.toggle("is-active", state.matchType !== "all");
+    // The second selector (ALL / Point Match / Unlimited / DMP) also stays visually neutral.
+    elements.matchSelector.classList.remove("is-active");
     elements.matchSelector.setAttribute("aria-label", `Match type: ${MATCH_TYPE_LABELS[state.matchType]}`);
   }
 }
 
 function setMatchType(matchType) {
-  if (!MATCH_TYPE_ORDER.includes(matchType)) return;
+  if (!matchTypeOrderForKind().includes(matchType)) return;
   state.matchType = matchType;
 
   state.current = null;
@@ -1164,7 +1242,8 @@ function cycleKind(delta) {
 }
 
 function cycleMatchType(delta) {
-  setMatchType(cycleOptionValue(MATCH_TYPE_ORDER, state.matchType, delta));
+  const order = matchTypeOrderForKind();
+  setMatchType(cycleOptionValue(order, state.matchType, delta));
 }
 
 function cycleSelector(selector, delta) {
@@ -1178,10 +1257,10 @@ function syncFilterButtons() {
     const active = Boolean(state.filters[filter]);
     const activeLabel = filter === "task" ? "Task" : "New";
     const label = button.querySelector(".filter-label");
-    if (label) label.textContent = active ? activeLabel : "ALL";
+    if (label) label.textContent = activeLabel;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
-    button.setAttribute("aria-label", `${activeLabel} filter: ${active ? activeLabel : "ALL"}`);
+    button.setAttribute("aria-label", `${activeLabel} filter: ${active ? "on" : "off"}`);
   });
 }
 
@@ -1269,6 +1348,7 @@ function installEvents() {
   elements.correctButton.addEventListener("click", () => judge("correct"));
   elements.wrongButton.addEventListener("click", () => judge("wrong"));
   elements.nextButton.addEventListener("click", selectNext);
+  elements.summaryAnalysis.addEventListener("click", togglePreAnswerPip);
   elements.actionAnalysis.addEventListener("click", handleCheckerCandidateInteraction);
   elements.actionAnalysis.addEventListener("keydown", handleCheckerCandidateInteraction);
 }
@@ -1324,6 +1404,7 @@ async function start() {
   );
   if (KIND_ORDER.includes(settings.kind)) state.currentKind = settings.kind;
   if (MATCH_TYPE_ORDER.includes(settings.matchType)) state.matchType = settings.matchType;
+  state.matchType = normalizeMatchTypeForKind(state.currentKind, state.matchType);
   if (Number(settings.filterModeVersion) >= 2) {
     state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly ?? false);
     state.filters.new = Boolean(settings.newOnly ?? false);
