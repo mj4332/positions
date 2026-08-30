@@ -252,6 +252,27 @@ class BuildLogicTests(unittest.TestCase):
             build.compact_move_notation("7/4 7/4*"),
             "7/4*(2)",
         )
+        self.assertEqual(
+            build.compact_move_notation("13/11 8/6 6/4*(2)", (2, 2)),
+            "13/11 8/4* 6/4",
+        )
+        self.assertEqual(
+            build.compact_move_notation("8/6 6/5*(2)", (1, 1)),
+            "8/5* 6/5",
+        )
+        self.assertEqual(
+            build.compact_move_notation("Bar/23* 6/4 4/2(2)", (2, 2)),
+            "Bar/23* 6/2 4/2",
+        )
+        self.assertEqual(
+            build.compact_move_notation("Bar/24 24/23(2) 9/8", (1, 1)),
+            "Bar/23 24/23 9/8",
+        )
+        # Keep the legacy grouping rule for ordinary, non-double dice.
+        self.assertEqual(
+            build.compact_move_notation("8/6 6/5*(2)", (2, 1)),
+            "8/6 6/5*(2)",
+        )
 
 
     def test_checker_move_highlights_track_only_mover_final_checker(self) -> None:
@@ -355,7 +376,26 @@ class BuildLogicTests(unittest.TestCase):
         )
         self.assertIn('fill="#ffffff" stroke="#6F5424" stroke-width="4.0"', white_svg)
 
-    def test_unlimited_board_score_is_zero_zero(self) -> None:
+    def test_match_board_separates_match_length_and_scores(self) -> None:
+        row = {
+            "id": "TEST-MATCH",
+            "position": [0] * 26,
+            "matchLength": 25,
+            "onRollScore": 7,
+            "onRollOpponentScore": 12,
+            "cubeOwner": "center",
+            "cubeValue": 4,
+            "diceValues": [],
+        }
+        svg = build.render_board_svg(row, show_pip_counts=False)
+        self.assertIn('fill="#ffffff" font-size="27" font-weight="700">25</text>', svg)
+        self.assertNotIn(">ML</text>", svg)
+        self.assertIn('fill="#000000" font-size="27" font-weight="700">12</text>', svg)
+        self.assertIn('fill="#000000" font-size="27" font-weight="700">7</text>', svg)
+        self.assertNotIn(">12/25</text>", svg)
+        self.assertNotIn(">7/25</text>", svg)
+
+    def test_unlimited_board_shows_u_without_scores(self) -> None:
         row = {
             "id": "TEST-UNLIMITED",
             "position": [0] * 26,
@@ -367,7 +407,10 @@ class BuildLogicTests(unittest.TestCase):
             "diceValues": [],
         }
         svg = build.render_board_svg(row, show_pip_counts=False)
-        self.assertGreaterEqual(svg.count(">0/0</text>"), 2)
+        self.assertIn('fill="#ffffff" font-size="27" font-weight="700">U</text>', svg)
+        self.assertNotIn('font-size="27" font-weight="700">12</text>', svg)
+        self.assertNotIn('font-size="27" font-weight="700">34</text>', svg)
+        self.assertNotIn(">ML</text>", svg)
         self.assertIn(">4</text>", svg)
 
 
