@@ -11,6 +11,201 @@ from vendor.xgread._notation import _collapse_unambiguous_hops
 
 
 class BuildLogicTests(unittest.TestCase):
+    def test_terminal_probability_fields_are_single_game_results(self) -> None:
+        winner = build.terminal_probability_fields(win=True)
+        loser = build.terminal_probability_fields(win=False)
+        self.assertEqual((winner["winRate"], winner["loseRate"]), (1.0, 0.0))
+        self.assertEqual((loser["winRate"], loser["loseRate"]), (0.0, 1.0))
+        self.assertEqual(winner["gammonWinRate"], 0.0)
+        self.assertEqual(loser["backgammonLoseRate"], 0.0)
+
+    def test_checker_pre_roll_rates_use_preceding_cube_analysis(self) -> None:
+        evaluation = build.Evaluation(
+            lose_bg=0.02,
+            lose_gammon=0.12,
+            lose_single=0.44,
+            win_single=0.56,
+            win_gammon=0.18,
+            win_bg=0.03,
+            equity=0.22,
+        )
+        position = build.xgread.Position(tuple([0] * 26))
+        cube = build.CubeAction(
+            player=1,
+            doubled=False,
+            took=None,
+            beavered=False,
+            cube_value=0,
+            position=position,
+            error_double=0.0,
+            error_take=build.xgread.NOT_ANALYSED,
+            no_double_equity=0.22,
+            double_take_equity=0.20,
+            double_drop_equity=1.0,
+            no_double_analysis=evaluation,
+            double_take_analysis=evaluation,
+            flagged=False,
+            comment_index=-1,
+        )
+        move = build.Move(
+            player=1,
+            position_before=position,
+            position_after=position,
+            dice=(3, 1),
+            moves=(),
+            cube_value=0,
+            error=0.0,
+            luck=0.0,
+            candidates=(),
+            flagged=False,
+            comment_index=-1,
+        )
+        decisions = [
+            SimpleNamespace(game_number=1, event=cube),
+            SimpleNamespace(game_number=1, event=move),
+        ]
+        rates = build.checker_pre_roll_probability_fields(decisions, 1)
+        self.assertAlmostEqual(rates["winRate"], 0.56)
+        self.assertAlmostEqual(rates["gammonWinRate"], 0.18)
+        self.assertAlmostEqual(rates["loseRate"], 0.44)
+
+    def test_checker_pre_roll_rates_recover_preceding_dance_by_result_board(self) -> None:
+        evaluation = build.Evaluation(
+            lose_bg=0.01,
+            lose_gammon=0.08,
+            lose_single=0.40,
+            win_single=0.60,
+            win_gammon=0.14,
+            win_bg=0.02,
+            equity=0.31,
+        )
+        position = build.xgread.Position(tuple([0] * 26))
+        dance_candidate = build.xgread.MoveCandidate(
+            moves=(build.xgread.MoveDetail(from_point=0, die=0),),
+            evaluation=evaluation,
+        )
+        prior_move = build.Move(
+            player=-1,
+            position_before=position,
+            position_after=position,
+            dice=(6, 6),
+            moves=(),
+            cube_value=0,
+            error=0.0,
+            luck=0.0,
+            candidates=(dance_candidate,),
+            flagged=False,
+            comment_index=-1,
+        )
+        current_move = build.Move(
+            player=1,
+            position_before=position,
+            position_after=position,
+            dice=(3, 2),
+            moves=(),
+            cube_value=0,
+            error=0.0,
+            luck=0.0,
+            candidates=(),
+            flagged=False,
+            comment_index=-1,
+        )
+        decisions = [
+            SimpleNamespace(game_number=1, event=prior_move),
+            SimpleNamespace(game_number=1, event=current_move),
+        ]
+        rates = build.checker_pre_roll_probability_fields(decisions, 1)
+        self.assertAlmostEqual(rates["winRate"], 0.40)
+        self.assertAlmostEqual(rates["loseRate"], 0.60)
+        self.assertAlmostEqual(rates["gammonWinRate"], 0.08)
+
+    def test_played_move_evaluation_recovers_missing_candidate_by_errmove_equity(self) -> None:
+        position = build.xgread.Position(tuple([0] * 26))
+        best = build.Evaluation(
+            lose_bg=0.01, lose_gammon=0.10, lose_single=0.45,
+            win_single=0.55, win_gammon=0.12, win_bg=0.02, equity=0.30,
+        )
+        played = build.Evaluation(
+            lose_bg=0.02, lose_gammon=0.13, lose_single=0.48,
+            win_single=0.52, win_gammon=0.10, win_bg=0.01, equity=0.28,
+        )
+        move = build.Move(
+            player=-1,
+            position_before=position,
+            position_after=position,
+            dice=(4, 1),
+            moves=(build.xgread.MoveDetail(from_point=12, die=8),),
+            cube_value=0,
+            error=-0.02,
+            luck=0.0,
+            candidates=(
+                build.xgread.MoveCandidate(
+                    moves=(build.xgread.MoveDetail(from_point=10, die=6),),
+                    evaluation=best,
+                ),
+                build.xgread.MoveCandidate(
+                    moves=(build.xgread.MoveDetail(from_point=9, die=5),),
+                    evaluation=played,
+                ),
+            ),
+            flagged=False,
+            comment_index=-1,
+        )
+        self.assertIsNone(move.played_index)
+        evaluation = build.played_move_evaluation(move)
+        self.assertIsNotNone(evaluation)
+        self.assertAlmostEqual(evaluation.equity, 0.28)
+        self.assertAlmostEqual(evaluation.win_single, 0.52)
+
+    def test_checker_pre_roll_rates_keep_first_checker_move_empty(self) -> None:
+        position = build.xgread.Position(tuple([0] * 26))
+        move = build.Move(
+            player=1,
+            position_before=position,
+            position_after=position,
+            dice=(3, 1),
+            moves=(),
+            cube_value=0,
+            error=0.0,
+            luck=0.0,
+            candidates=(),
+            flagged=False,
+            comment_index=-1,
+        )
+        decisions = [SimpleNamespace(game_number=1, event=move)]
+        rates = build.checker_pre_roll_probability_fields(decisions, 0)
+        self.assertIsNone(rates["winRate"])
+        self.assertIsNone(rates["loseRate"])
+
+    def test_cube_action_render_state_applies_selected_cube_to_take_view(self) -> None:
+        row = {
+            "decisionKind": "take",
+            "position": [0] * 26,
+            "quizPosition": [0] * 26,
+            "player": "Doubler",
+            "opponent": "Taker",
+            "quizPlayer": "Taker",
+            "quizOpponent": "Doubler",
+            "playerScore": 2,
+            "opponentScore": 1,
+            "quizPlayerScore": 1,
+            "quizOpponentScore": 2,
+            "onRollScore": 2,
+            "onRollOpponentScore": 1,
+            "quizOnRollScore": 1,
+            "quizOnRollOpponentScore": 2,
+            "cubeValue": 2,
+            "cubeOwner": "onRoll",
+        }
+        rendered, marker = build.cube_action_render_state(
+            row,
+            {"cubeValue": 4, "cubeOwner": "onRoll"},
+        )
+        self.assertEqual(rendered["position"], row["quizPosition"])
+        self.assertEqual(rendered["cubeValue"], 4)
+        self.assertEqual(rendered["cubeOwner"], "onRoll")
+        self.assertEqual(marker, "white")
+
     def test_new_window_is_seven_days(self) -> None:
         now = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
         self.assertTrue(build.source_is_new((now - timedelta(days=7)).isoformat(), now))

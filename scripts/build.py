@@ -291,6 +291,135 @@ def probability_fields(evaluation: Evaluation | None, invert: bool = False) -> d
     }
 
 
+def played_move_evaluation(move: Move) -> Evaluation | None:
+    """Return the analysed evaluation for the move that was actually played.
+
+    XG usually lets ``Move.played_index`` identify the played candidate directly.
+    Some exports omit that match in two recoverable situations:
+
+    * dances / no-move turns, where XG stores a dummy candidate move sequence;
+    * rare records where the played checker sequence itself is absent from the
+      ranked list, but ``ErrMove`` still identifies its evaluation equity.
+
+    Recover both so every non-opening checker turn can reuse the preceding
+    move's after-move evaluation as the next player's exact pre-roll baseline.
+    """
+    played_index = move.played_index
+    if played_index is not None and 0 <= played_index < len(move.candidates):
+        evaluation = move.candidates[played_index].evaluation
+        if valid_probability_evaluation(evaluation):
+            return evaluation
+
+    valid_candidates = [
+        candidate for candidate in move.candidates
+        if valid_probability_evaluation(candidate.evaluation)
+    ]
+    if not valid_candidates:
+        return None
+
+    # XG dances are encoded with no played checker hops, while the sole engine
+    # candidate may contain dummy 0/0 hops.  There is still only one analysed
+    # result, so it is unambiguous.
+    if not move.moves and len(valid_candidates) == 1:
+        return valid_candidates[0].evaluation
+
+    # In a handful of XG records the played sequence is missing from the
+    # candidate list even though ErrMove is present.  ErrMove is the equity loss
+    # from the engine's best candidate, so it pins down the played evaluation's
+    # equity.  Match that inferred equity back to the stored probability vector.
+    if move.is_analysed and math.isfinite(float(move.error)):
+        best_equity = max(float(candidate.evaluation.equity) for candidate in valid_candidates)
+        target_equity = best_equity - abs(float(move.error))
+        closest = min(
+            valid_candidates,
+            key=lambda candidate: abs(float(candidate.evaluation.equity) - target_equity),
+        )
+        if abs(float(closest.evaluation.equity) - target_equity) <= 1e-5:
+            return closest.evaluation
+
+    return None
+
+
+def checker_pre_roll_probability_fields(decisions: list[Any], index: int) -> dict[str, float | None]:
+    """Return Checker Play probabilities for the position before the dice roll.
+
+    XG normally stores a CubeAction record immediately before every checker
+    move. Its No Double (or accepted Double/Take) analysis evaluates the same
+    board before the dice are rolled, so prefer that vector. If that cube
+    analysis is unavailable and no cube was turned, the previous played checker
+    move ends at the same board; invert that mover's evaluation into the current
+    player's perspective.
+
+    Never substitute the current played move's after-move evaluation. When an
+    exact pre-roll vector is unavailable, publish nulls so the UI displays an
+    em dash rather than misleading post-move percentages.
+    """
+    empty = probability_fields(None)
+    if index < 0 or index >= len(decisions):
+        return empty
+
+    decision = decisions[index]
+    move = getattr(decision, "event", None)
+    if not isinstance(move, Move):
+        return empty
+
+    if index > 0:
+        previous = decisions[index - 1]
+        if previous.game_number == decision.game_number and isinstance(previous.event, CubeAction):
+            previous_cube = previous.event
+            if previous_cube.player == move.player:
+                evaluation = (
+                    previous_cube.double_take_analysis
+                    if previous_cube.doubled and previous_cube.took
+                    else previous_cube.no_double_analysis
+                )
+                if valid_probability_evaluation(evaluation):
+                    return probability_fields(evaluation)
+
+            # Once the cube was actually turned, an earlier checker evaluation
+            # belongs to the old cube state and is not a valid fallback.
+            if previous_cube.doubled:
+                return empty
+
+    # Normal no-double turn with missing cube analysis: use the preceding
+    # opponent move's analysed played result, which is the same board before
+    # this roll. XG stores it from that opponent's perspective.
+    for prior_index in range(index - 1, -1, -1):
+        prior = decisions[prior_index]
+        if prior.game_number != decision.game_number:
+            break
+        prior_event = prior.event
+        if isinstance(prior_event, CubeAction):
+            continue
+        if not isinstance(prior_event, Move):
+            continue
+        if prior_event.player == move.player:
+            break
+        evaluation = played_move_evaluation(prior_event)
+        if valid_probability_evaluation(evaluation):
+            return probability_fields(evaluation, invert=True)
+        break
+
+    return empty
+
+
+def terminal_probability_fields(*, win: bool) -> dict[str, float]:
+    """Return a terminal single-game result for an accepted Pass/Drop.
+
+    Once a player passes, the game is over: the winner's game win rate is
+    100%, the loser's is 0%, and no gammon/backgammon continuation remains.
+    """
+    return {
+        "winRate": 1.0 if win else 0.0,
+        "gammonWinRate": 0.0,
+        "backgammonWinRate": 0.0,
+        "loseRate": 0.0 if win else 1.0,
+        "gammonLoseRate": 0.0,
+        "backgammonLoseRate": 0.0,
+        "equity": None,
+    }
+
+
 RATE_FIELD_KEYS = (
     "winRate",
     "gammonWinRate",
@@ -716,6 +845,8 @@ def cube_candidate_payload(
         reference_key = "no_offer"
         reference_equity = no_offer_equity
 
+    current_cube = cube_value_number(cube.cube_value)
+    current_owner = "center" if cube.cube_value == 0 else "onRoll"
     raw_rows = [
         (
             "no_offer",
@@ -724,7 +855,7 @@ def cube_candidate_payload(
             first_available_evaluation(cube.no_double_analysis, position_evaluation),
         ),
         ("take", labels["take"], take_equity, position_evaluation),
-        ("pass", labels["pass"], pass_equity, position_evaluation),
+        ("pass", labels["pass"], pass_equity, None),
     ]
 
     return [
@@ -732,7 +863,13 @@ def cube_candidate_payload(
             "rank": order,
             "action": action,
             "equityDifference": None if key == reference_key else equity - reference_equity,
-            **probability_fields(evaluation),
+            "cubeValue": current_cube if key == "no_offer" else current_cube * 2,
+            "cubeOwner": current_owner if key == "no_offer" else "opponent",
+            **(
+                terminal_probability_fields(win=True)
+                if key == "pass"
+                else probability_fields(evaluation)
+            ),
         }
         for order, (key, action, equity, evaluation) in enumerate(raw_rows, start=1)
     ]
@@ -745,6 +882,7 @@ def make_checker_row(
     *,
     standalone: bool = False,
     source_identity: str | None = None,
+    pre_roll_rates: dict[str, float | None] | None = None,
 ) -> dict[str, Any] | None:
     actor = player_name(match, move.player)
     if not cfg["includeCheckerErrors"]:
@@ -781,6 +919,16 @@ def make_checker_row(
     opponent = player_name(match, -move.player)
     identity = source_identity or match.identity_hash
     row_id = event_id(identity, decision.game_number, decision.move_number, "checker", actor)
+    pre_roll = pre_roll_rates if pre_roll_rates is not None else probability_fields(None)
+    pre_roll_fields = {
+        "preRollWinRate": pre_roll.get("winRate"),
+        "preRollGammonWinRate": pre_roll.get("gammonWinRate"),
+        "preRollBackgammonWinRate": pre_roll.get("backgammonWinRate"),
+        "preRollLoseRate": pre_roll.get("loseRate"),
+        "preRollGammonLoseRate": pre_roll.get("gammonLoseRate"),
+        "preRollBackgammonLoseRate": pre_roll.get("backgammonLoseRate"),
+        "preRollEquity": pre_roll.get("equity"),
+    }
 
     return {
         "id": row_id,
@@ -812,6 +960,7 @@ def make_checker_row(
         "position": position_for_view(move.position_before.points, move.player),
         "candidates": checker_candidates,
         **probability_fields(actual_evaluation),
+        **pre_roll_fields,
         "matchDate": match.header.date.date().isoformat() if match.header.date else None,
     }
 
@@ -954,14 +1103,32 @@ def take_quiz_candidate_payload(cube: CubeAction) -> list[dict[str, Any]]:
     ]
     responder_rows.sort(key=lambda item: item[1], reverse=True)
     best_equity = responder_rows[0][1]
-    return [
-        {
-            "rank": rank,
-            "action": action,
-            "equityDifference": None if rank == 1 else equity - best_equity,
-        }
-        for rank, (action, equity) in enumerate(responder_rows, start=1)
-    ]
+    offered_cube = cube_value_number(cube.cube_value) * 2
+    take_rates = probability_fields(
+        first_available_evaluation(cube.double_take_analysis, cube.no_double_analysis),
+        invert=True,
+    )
+    rows: list[dict[str, Any]] = []
+    for rank, (action, equity) in enumerate(responder_rows, start=1):
+        rows.append(
+            {
+                "rank": rank,
+                "action": action,
+                "equityDifference": None if rank == 1 else equity - best_equity,
+                "cubeValue": offered_cube,
+                # In the Take drill view the responder is black/bottom.  Once
+                # Take is chosen the cube belongs to that black player; for a
+                # Pass we keep the offered cube in the same visible location
+                # to show the action being answered.
+                "cubeOwner": "onRoll",
+                **(
+                    take_rates
+                    if action == "Take"
+                    else terminal_probability_fields(win=False)
+                ),
+            }
+        )
+    return rows
 
 
 def make_take_row(
@@ -1113,6 +1280,20 @@ def quiz_render_state(row: dict[str, Any]) -> tuple[dict[str, Any], str]:
         "cubeOwner": "center" if row["cubeOwner"] == "center" else "opponent",
     }
     return quiz_row, "white"
+
+
+def cube_action_render_state(
+    row: dict[str, Any],
+    candidate: dict[str, Any],
+) -> tuple[dict[str, Any], str]:
+    """Return the board state after selecting a cube-action candidate."""
+    render_row, marker = quiz_render_state(row)
+    action_row = dict(render_row)
+    if candidate.get("cubeValue") is not None:
+        action_row["cubeValue"] = candidate["cubeValue"]
+    if candidate.get("cubeOwner"):
+        action_row["cubeOwner"] = candidate["cubeOwner"]
+    return action_row, marker
 
 
 def render_board_svg(
@@ -1512,6 +1693,7 @@ def build() -> None:
     # public UI files into the Pages artifact; source XG/build files stay out.
     public_files = (
         "index.html",
+        "guide.html",
         "app.js",
         "styles.css",
         "favicon.ico",
@@ -1540,7 +1722,12 @@ def build() -> None:
     for source in imported_files:
         match = xgread.read(source)
         standalone = is_xgp_source(source)
+        all_decisions = list(match.decisions())
         decisions = primary_decisions(source, match)
+        decision_indexes = {
+            (item.game_number, item.move_number): index
+            for index, item in enumerate(all_decisions)
+        }
         source_identity = xgp_identity(decisions) if standalone else match.identity_hash
 
         if standalone:
@@ -1587,6 +1774,10 @@ def build() -> None:
                     make_checker_row(
                         match, decision, event, cfg,
                         standalone=standalone, source_identity=source_identity,
+                        pre_roll_rates=checker_pre_roll_probability_fields(
+                            all_decisions,
+                            decision_indexes.get((decision.game_number, decision.move_number), -1),
+                        ),
                     )
                 ]
             elif isinstance(event, CubeAction):
@@ -1672,6 +1863,27 @@ def build() -> None:
                                 move_board_row,
                                 show_pip_counts=False,
                                 move_highlights=move_highlights,
+                            ),
+                            encoding="utf-8",
+                        )
+                elif row.get("decisionKind") in {"double", "take"}:
+                    action_candidates = (
+                        row.get("quizCandidates")
+                        if row.get("decisionKind") == "take"
+                        else row.get("candidates")
+                    ) or []
+                    for candidate in action_candidates:
+                        action_board_relative = (
+                            f"assets/boards-actions/{row['id']}-{int(candidate.get('rank') or 0)}.svg"
+                        )
+                        action_board_row, action_marker = cube_action_render_state(row, candidate)
+                        candidate["actionBoardImage"] = action_board_relative
+                        (DIST_DIR / action_board_relative).parent.mkdir(parents=True, exist_ok=True)
+                        (DIST_DIR / action_board_relative).write_text(
+                            render_board_svg(
+                                action_board_row,
+                                show_pip_counts=False,
+                                on_roll_marker=action_marker,
                             ),
                             encoding="utf-8",
                         )

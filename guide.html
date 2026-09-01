@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#000000">
+  <title>POSITION DRILL 利用ガイド</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="shortcut icon" href="favicon.ico">
+  <style>
+    :root {
+      --theme: #B7924B;
+      --active: #6F5424;
+      --black: #000000;
+      --white: #FFFFFF;
+      --gray: #CFCFCF;
+      --line: #657077;
+      --good: #7EC797;
+      --bad: #E38A8A;
+      --severe: #C58CFF;
+      --font-xs: 11px;
+      --font-sm: 15px;
+      --font-md: 19px;
+      --font-lg: 23px;
+      --title-mobile: 31px;
+      --title-desktop: 39px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      background: var(--black);
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--white);
+      background: var(--black);
+      font-family: Inter, "Noto Sans JP", "Yu Gothic", Meiryo, system-ui, sans-serif;
+      line-height: 1.65;
+    }
+
+    a { color: inherit; }
+
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      min-height: 58px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--black);
+      border-bottom: 1px solid var(--theme);
+      backdrop-filter: blur(10px);
+    }
+
+    .header-inner {
+      position: relative;
+      width: min(920px, 100%);
+      min-height: 41px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .brand {
+      min-width: 0;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 12px;
+      white-space: nowrap;
+    }
+
+    .brand strong {
+      color: var(--theme);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: var(--title-desktop);
+      line-height: 1;
+      letter-spacing: -.03em;
+    }
+
+    .brand span {
+      color: var(--white);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .header-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: stretch;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .header-link {
+      min-height: 36px;
+      padding: 0 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid var(--line);
+      color: var(--white);
+      background: var(--black);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .header-link:last-child { border-right: 0; }
+    .header-link:hover,
+    .header-link:focus-visible { background: var(--active); }
+    .home-short { display: none; }
+
+    main {
+      width: min(920px, calc(100% - 24px));
+      margin: 0 auto;
+      padding: 16px 0 48px;
+    }
+
+    .hero {
+      margin-bottom: 12px;
+      padding: 18px 18px 16px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--black);
+    }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: var(--gray);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      letter-spacing: .08em;
+    }
+
+    .hero h1 {
+      margin: 0;
+      color: var(--theme);
+      font-size: var(--font-lg);
+      line-height: 1.25;
+    }
+
+    .lead {
+      margin: 10px 0 0;
+      color: var(--gray);
+      font-size: var(--font-sm);
+    }
+
+    .quick-nav {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .quick-nav a {
+      min-height: 42px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      color: var(--white);
+      background: var(--black);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .quick-nav a:nth-child(3n) { border-right: 0; }
+    .quick-nav a:nth-last-child(-n+3) { border-bottom: 0; }
+    .quick-nav a:hover,
+    .quick-nav a:focus-visible { background: var(--active); }
+
+    section.guide-section {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      background: var(--black);
+    }
+
+    section.guide-section:first-of-type { border-radius: 15px 15px 0 0; }
+    section.guide-section:last-of-type {
+      border-bottom: 1px solid var(--line);
+      border-radius: 0 0 15px 15px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      color: var(--theme);
+      font-size: var(--font-md);
+      line-height: 1.35;
+    }
+
+    h3 {
+      margin: 0 0 6px;
+      color: var(--white);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+    }
+
+    p { margin: 0; }
+    .muted { color: var(--gray); font-size: 13px; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .step,
+    .info-card,
+    .term-card {
+      min-width: 0;
+      background: var(--black);
+    }
+
+    .step {
+      padding: 14px;
+      border-right: 1px solid var(--line);
+    }
+
+    .step:last-child { border-right: 0; }
+
+    .step-no {
+      width: 28px;
+      height: 24px;
+      margin-bottom: 8px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      color: var(--black);
+      background: var(--theme);
+      font-size: var(--font-xs);
+      font-weight: 900;
+    }
+
+    .step p,
+    .info-card p,
+    .term-card p {
+      color: var(--gray);
+      font-size: 13px;
+    }
+
+    .menu-demo {
+      margin: 0 0 14px;
+      min-width: 0;
+      height: 44px;
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .menu-pair {
+      min-width: 0;
+      height: 44px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--black);
+    }
+
+    .menu-cell {
+      min-width: 0;
+      height: 44px;
+      padding: 0 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      border-right: 1px solid var(--line);
+      color: var(--white);
+      background: var(--black);
+      font-size: var(--font-sm);
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .menu-cell:last-child { border-right: 0; }
+    .menu-cell small { color: var(--gray); font-size: var(--font-xs); font-weight: 600; }
+    .menu-cell.active { background: var(--active); }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .info-card,
+    .term-card {
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .grid-2 > :nth-child(2n),
+    .grid-3 > :nth-child(3n) { border-right: 0; }
+    .grid-2 > :nth-last-child(-n+2),
+    .grid-3 > :nth-last-child(-n+3) { border-bottom: 0; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      margin-bottom: 7px;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: var(--active);
+      color: var(--white);
+      font-size: var(--font-xs);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .tag.gold { color: var(--black); background: var(--theme); border-color: var(--theme); }
+    .tag.gray { color: var(--white); background: var(--line); }
+
+    .answer-demo {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--black);
+    }
+
+    .answer-row {
+      min-height: 42px;
+      padding: 8px 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--white);
+      font-size: 13px;
+    }
+
+    .answer-row:last-child { border-bottom: 0; }
+    .answer-row.best { background: var(--active); }
+    .best-mark { font-weight: 900; }
+    .loss-good { color: var(--good); }
+    .loss-bad { color: var(--bad); }
+
+    .button-row {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .fake-button {
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--white);
+      background: var(--black);
+      font-size: var(--font-md);
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    .fake-button.primary { color: var(--black); background: var(--theme); }
+
+    .judge-row {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .judge {
+      min-height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--black);
+      font-size: 24px;
+      font-weight: 900;
+    }
+
+    .judge.correct { color: var(--good); border-color: var(--good); }
+    .judge.wrong { color: var(--bad); border-color: var(--bad); }
+
+    .data-table {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .data-table tr:last-child th,
+    .data-table tr:last-child td { border-bottom: 0; }
+
+    .data-table th {
+      width: 90px;
+      color: var(--theme);
+      background: var(--black);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .data-table td { color: var(--gray); }
+
+    .notice {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--theme);
+      border-radius: 0 8px 8px 0;
+      color: var(--gray);
+      background: var(--black);
+      font-size: 13px;
+    }
+
+    .record-demo {
+      margin-top: 14px;
+      padding: 10px 12px;
+      display: flex;
+      gap: 28px;
+      overflow-x: auto;
+      white-space: nowrap;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--gray);
+      font-size: var(--font-xs);
+      font-variant-numeric: tabular-nums;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .record-demo::-webkit-scrollbar { display: none; }
+    .record-demo strong { color: var(--gray); }
+    .record-demo .ok { color: var(--good); font-size: var(--font-sm); font-weight: 800; }
+    .record-demo .ng { color: var(--bad); font-size: var(--font-sm); font-weight: 800; }
+
+    .footer {
+      padding: 20px 0 0;
+      color: var(--line);
+      text-align: center;
+      font-size: var(--font-xs);
+    }
+
+    @media (max-width: 790px) {
+      .page-header { min-height: 53px; padding: 7px 10px; }
+      .header-inner { width: 100%; min-height: 38px; gap: 8px; }
+
+      .brand { gap: 6px; }
+      .brand strong { font-size: clamp(24px, 7.4vw, var(--title-mobile)); transform: translateY(2px); }
+      .brand span { display: none; }
+
+      .header-actions { border-radius: 8px; }
+      .header-link { min-height: 34px; padding: 0 8px; font-size: 10px; }
+      .home-full { display: none; }
+      .home-short { display: inline; }
+
+      main { width: min(100% - 20px, 920px); padding-top: 10px; }
+      .hero { padding: 14px 12px 12px; }
+      .hero h1 { font-size: var(--font-md); }
+      .lead { font-size: 13px; }
+
+      section.guide-section { padding: 14px 12px; }
+      h2 { font-size: var(--font-md); }
+
+      .steps { grid-template-columns: 1fr 1fr; }
+      .step:nth-child(2) { border-right: 0; }
+      .step:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-3 > .term-card { border-right: 0; border-bottom: 1px solid var(--line); }
+      .grid-3 > .term-card:last-child { border-bottom: 0; }
+    }
+
+    @media (max-width: 520px) {
+      .quick-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .quick-nav a:nth-child(3n) { border-right: 1px solid var(--line); }
+      .quick-nav a:nth-child(2n) { border-right: 0; }
+      .quick-nav a:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
+      .quick-nav a:nth-last-child(-n+2) { border-bottom: 0; }
+
+      .menu-demo { gap: 6px; }
+      .menu-cell { padding: 0 3px; font-size: 11px; }
+      .menu-cell small { font-size: 9px; }
+
+      .grid-2 { grid-template-columns: 1fr; }
+      .grid-2 > .info-card { border-right: 0; border-bottom: 1px solid var(--line); }
+      .grid-2 > .info-card:last-child { border-bottom: 0; }
+
+      .data-table th { width: 72px; }
+      .button-row { gap: 6px; }
+      .fake-button { font-size: var(--font-sm); }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div class="header-inner">
+      <div class="brand">
+        <strong>POSITION DRILL</strong>
+        <span>USER GUIDE</span>
+      </div>
+      <nav class="header-actions" aria-label="サイト移動">
+        <a class="header-link" href="https://yanagibackgammon.github.io/" aria-label="YANAGI Backgammon ホームへ">
+          <span class="home-full">YANAGI Backgammon</span><span class="home-short">HOME</span>
+        </a>
+        <a class="header-link" href="./">DRILL</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">HOW TO USE</p>
+      <h1>利用ガイド</h1>
+      <p class="lead">POSITION DRILLは、Extreme Gammonで解析したChecker Play・Double Action・Take/Passのポジションを反復練習するためのドリルです。条件を選び、答えを考え、CHECK後に自己採点して進めます。</p>
+      <nav class="quick-nav" aria-label="ページ内メニュー">
+        <a href="#flow">基本の流れ</a>
+        <a href="#menu">メニュー</a>
+        <a href="#checker">Checker</a>
+        <a href="#cube">Double / Take</a>
+        <a href="#info">ゲーム情報</a>
+        <a href="#record">記録</a>
+      </nav>
+    </section>
+
+    <section id="flow" class="guide-section">
+      <h2>基本の流れ</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-no">1</div>
+          <h3>条件を選ぶ</h3>
+          <p>Checker / Double / Take/Passと、マッチ形式を選択します。</p>
+        </div>
+        <div class="step">
+          <div class="step-no">2</div>
+          <h3>答えを考える</h3>
+          <p>盤面と公開されているゲーム情報を見て、自分の答えを決めます。</p>
+        </div>
+        <div class="step">
+          <div class="step-no">3</div>
+          <h3>CHECK</h3>
+          <p>CHECKを押すと解析結果が表示され、最善手が選択状態になります。</p>
+        </div>
+        <div class="step">
+          <div class="step-no">4</div>
+          <h3>○ / ×で記録</h3>
+          <p>自分の回答が正しければ○、間違っていれば×を押すと次の問題へ進みます。</p>
+        </div>
+      </div>
+      <div class="button-row" aria-hidden="true">
+        <div class="fake-button primary">CHECK</div>
+        <div class="fake-button">SKIP</div>
+      </div>
+      <div class="judge-row" aria-hidden="true">
+        <div class="judge correct">○</div>
+        <div class="judge wrong">×</div>
+      </div>
+      <div class="notice">SKIPは成績に記録せず、次のポジションへ進みます。</div>
+    </section>
+
+    <section id="menu" class="guide-section">
+      <h2>上部メニュー</h2>
+      <div class="menu-demo" aria-hidden="true">
+        <div class="menu-pair">
+          <div class="menu-cell">Checker Play<small>POSITION TYPE</small></div>
+          <div class="menu-cell">ALL<small>MATCH TYPE</small></div>
+        </div>
+        <div class="menu-pair">
+          <div class="menu-cell active">Task</div>
+          <div class="menu-cell">New</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="info-card">
+          <span class="tag gold">POSITION TYPE</span>
+          <h3>Checker / Double / Take/Pass</h3>
+          <p>タップで問題種別を切り替えます。スマホでは上下スワイプでも切り替えられます。</p>
+        </div>
+        <div class="info-card">
+          <span class="tag gold">MATCH TYPE</span>
+          <h3>ALL / Point Match / Unlimited / DMP</h3>
+          <p>Checkerでは4種類、Double / Take/PassではDMPを除く3種類から選択できます。</p>
+        </div>
+        <div class="info-card">
+          <span class="tag">Task</span>
+          <h3>要復習ポジション</h3>
+          <p>未正解、または正解数が不正解数を上回っていないポジションだけを表示します。</p>
+        </div>
+        <div class="info-card">
+          <span class="tag">New</span>
+          <h3>新着ポジション</h3>
+          <p>直近7日間に追加・更新されたポジションだけを表示します。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="checker" class="guide-section">
+      <h2>Checker Play</h2>
+      <div class="grid-2">
+        <div class="info-card">
+          <h3>CHECK前</h3>
+          <p>盤面には出目が表示されます。ゲーム情報は原則としてその出目を振る前の状態です。PIPはゲーム情報欄をタップすると確認できます。</p>
+        </div>
+        <div class="info-card">
+          <h3>CHECK後</h3>
+          <p>最善手が自動選択され、候補手とエラー値が表示されます。候補手をタップすると、その手を指した後の盤面・PIP・勝率等に切り替わります。</p>
+        </div>
+      </div>
+
+      <div class="answer-demo" aria-hidden="true">
+        <div class="answer-row best"><span>13/8 6/5</span><span class="best-mark">BEST</span></div>
+        <div class="answer-row"><span>24/18</span><span class="loss-good">-0.018</span></div>
+        <div class="answer-row"><span>8/2</span><span class="loss-bad">-0.072</span></div>
+      </div>
+      <div class="notice">候補手をもう一度タップすると選択を解除し、出目を振る前のゲーム情報に戻せます。</div>
+    </section>
+
+    <section id="cube" class="guide-section">
+      <h2>Double / Take/Pass</h2>
+      <div class="grid-2">
+        <div class="info-card">
+          <span class="tag gray">Double Action</span>
+          <h3>ダブルするかを判断</h3>
+          <p>No Double、Double/Take、Double/Pass、Too good系などを比較します。CHECK後は最善アクションが暗金帯で固定表示されます。</p>
+        </div>
+        <div class="info-card">
+          <span class="tag gray">Take / Pass</span>
+          <h3>ダブルを受けるかを判断</h3>
+          <p>TakeまたはPassを判断します。CHECK後は最善アクションが暗金帯で固定表示されます。</p>
+        </div>
+      </div>
+
+      <div class="answer-demo" aria-hidden="true">
+        <div class="answer-row best"><span>Double/Take</span><span class="best-mark">BEST</span></div>
+        <div class="answer-row"><span>No Double</span><span>-0.041</span></div>
+        <div class="answer-row"><span>Double/Pass</span><span>-0.118</span></div>
+      </div>
+
+      <div class="notice">Double / Take/Passでは、CHECK後もポジション図とゲーム情報は<strong>キューブを打つ前の状態</strong>で固定されます。候補をタップしても盤面・勝率等は変化しません。</div>
+    </section>
+
+    <section id="info" class="guide-section">
+      <h2>ゲーム情報の見方</h2>
+      <table class="data-table">
+        <tbody>
+          <tr><th>ML</th><td>Match Length。マッチのポイント数です。</td></tr>
+          <tr><th>CB</th><td>Cube。現在のキューブ値・状態を示します。</td></tr>
+          <tr><th>BK / WH</th><td>黒側・白側の現在スコア。括弧内は残りポイント（away）です。</td></tr>
+          <tr><th>PIP</th><td>黒側・白側のPIPカウントです。</td></tr>
+          <tr><th>W</th><td>Win。各側の勝率です。</td></tr>
+          <tr><th>GW</th><td>Gammon Win。ギャモン勝ちを含む確率表示です。</td></tr>
+          <tr><th>BG</th><td>Backgammon Win。バックギャモン勝ちの確率です。</td></tr>
+        </tbody>
+      </table>
+      <div class="notice">Double / Take/Passのゲーム情報は一律で、キューブを打つ前のNo Double状態を基準に表示します。</div>
+    </section>
+
+    <section id="record" class="guide-section">
+      <h2>成績・出典</h2>
+      <div class="grid-3">
+        <div class="term-card">
+          <h3>Total</h3>
+          <p>これまでの全体成績です。</p>
+        </div>
+        <div class="term-card">
+          <h3>Today</h3>
+          <p>当日の○・×の成績です。</p>
+        </div>
+        <div class="term-card">
+          <h3>Now</h3>
+          <p>現在表示しているポジションの○・×の回数です。</p>
+        </div>
+      </div>
+
+      <div class="record-demo" aria-hidden="true">
+        <span><strong>Total</strong> <span class="ok">12</span> / <span class="ng">5</span></span>
+        <span><strong>Today</strong> <span class="ok">4</span> / <span class="ng">2</span></span>
+        <span><strong>Now</strong> <span class="ok">1</span> / <span class="ng">1</span></span>
+        <span>source-file.xgp</span>
+      </div>
+      <div class="notice">スマホでは最終行全体を左右にスクロールできます。長い出典ファイル名も横スクロールして確認できます。</div>
+    </section>
+
+    <section class="guide-section">
+      <h2>データの保存</h2>
+      <p class="muted">○・×の進捗と表示設定はブラウザ内に保存されます。ブラウザや端末を変更した場合、またはサイトデータを削除した場合は、別の記録として扱われることがあります。</p>
+    </section>
+
+    <div class="footer">POSITION DRILL · YANAGI Backgammon</div>
+  </main>
+</body>
+</html>
