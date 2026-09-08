@@ -25,6 +25,7 @@
       --font-sm: 15px;
       --font-md: 19px;
       --font-lg: 23px;
+      --font-xl: 27px;
       --title-mobile: 31px;
       --title-desktop: 39px;
     }
@@ -219,7 +220,7 @@
     }
 
     p { margin: 0; }
-    .muted { color: var(--gray); font-size: 13px; }
+    .muted { color: var(--gray); font-size: var(--font-sm); }
 
     .steps {
       display: grid;
@@ -260,51 +261,40 @@
     .info-card p,
     .term-card p {
       color: var(--gray);
-      font-size: 13px;
+      font-size: var(--font-sm);
     }
 
     .menu-demo {
       margin: 0 0 14px;
       min-width: 0;
-      height: 44px;
+      min-height: 58px;
       display: grid;
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-      gap: 8px;
-    }
-
-    .menu-pair {
-      min-width: 0;
-      height: 44px;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
+      grid-template-columns: .72fr 1.08fr 1.28fr .62fr;
+      border-top: 1px solid var(--theme);
+      border-bottom: 1px solid var(--theme);
       background: var(--black);
     }
 
     .menu-cell {
       min-width: 0;
-      height: 44px;
-      padding: 0 6px;
+      min-height: 56px;
+      padding: 0 4px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 2px;
-      border-right: 1px solid var(--line);
       color: var(--white);
       background: var(--black);
-      font-size: var(--font-sm);
+      font-size: var(--font-md);
       font-weight: 700;
       line-height: 1;
       text-align: center;
       white-space: nowrap;
     }
 
-    .menu-cell:last-child { border-right: 0; }
+    .menu-count-demo strong { font-size: var(--font-lg); }
     .menu-cell small { color: var(--gray); font-size: var(--font-xs); font-weight: 600; }
-    .menu-cell.active { background: var(--active); }
 
     .grid-2,
     .grid-3 {
@@ -364,7 +354,7 @@
       gap: 14px;
       border-bottom: 1px solid var(--line);
       color: var(--white);
-      font-size: 13px;
+      font-size: var(--font-sm);
     }
 
     .answer-row:last-child { border-bottom: 0; }
@@ -409,7 +399,7 @@
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--black);
-      font-size: 24px;
+      font-size: var(--font-lg);
       font-weight: 900;
     }
 
@@ -423,7 +413,7 @@
       border-spacing: 0;
       border-radius: 12px;
       overflow: hidden;
-      font-size: 13px;
+      font-size: var(--font-sm);
     }
 
     .data-table th,
@@ -455,7 +445,7 @@
       border-radius: 0 8px 8px 0;
       color: var(--gray);
       background: var(--black);
-      font-size: 13px;
+      font-size: var(--font-sm);
     }
 
     .record-demo {
@@ -492,18 +482,18 @@
       .header-inner { width: 100%; min-height: 38px; gap: 8px; }
 
       .brand { gap: 6px; }
-      .brand strong { font-size: clamp(24px, 7.4vw, var(--title-mobile)); transform: translateY(2px); }
+      .brand strong { font-size: var(--font-xl); transform: translateY(2px); }
       .brand span { display: none; }
 
       .header-actions { border-radius: 8px; }
-      .header-link { min-height: 34px; padding: 0 8px; font-size: 10px; }
+      .header-link { min-height: 34px; padding: 0 8px; font-size: var(--font-xs); }
       .home-full { display: none; }
       .home-short { display: inline; }
 
       main { width: min(100% - 20px, 920px); padding-top: 10px; }
       .hero { padding: 14px 12px 12px; }
       .hero h1 { font-size: var(--font-md); }
-      .lead { font-size: 13px; }
+      .lead { font-size: var(--font-sm); }
 
       section.guide-section { padding: 14px 12px; }
       h2 { font-size: var(--font-md); }
@@ -524,9 +514,9 @@
       .quick-nav a:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
       .quick-nav a:nth-last-child(-n+2) { border-bottom: 0; }
 
-      .menu-demo { gap: 6px; }
-      .menu-cell { padding: 0 3px; font-size: 11px; }
-      .menu-cell small { font-size: 9px; }
+      .menu-demo { gap: 0; }
+      .menu-cell { padding: 0 3px; font-size: var(--font-sm); }
+      .menu-cell small { font-size: var(--font-xs); }
 
       .grid-2 { grid-template-columns: 1fr; }
       .grid-2 > .info-card { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -607,14 +597,10 @@
     <section id="menu" class="guide-section">
       <h2>上部メニュー</h2>
       <div class="menu-demo" aria-hidden="true">
-        <div class="menu-pair">
-          <div class="menu-cell">Checker Play<small>POSITION TYPE</small></div>
-          <div class="menu-cell">ALL<small>MATCH TYPE</small></div>
-        </div>
-        <div class="menu-pair">
-          <div class="menu-cell active">Task</div>
-          <div class="menu-cell">New</div>
-        </div>
+        <div class="menu-cell menu-count-demo"><strong>3398</strong><small>Positions</small></div>
+        <div class="menu-cell">Checker Play</div>
+        <div class="menu-cell">ALL</div>
+        <div class="menu-cell">☰</div>
       </div>
 
       <div class="grid-2">
@@ -625,18 +611,23 @@
         </div>
         <div class="info-card">
           <span class="tag gold">MATCH TYPE</span>
-          <h3>ALL / Point Match / Unlimited / DMP</h3>
-          <p>Checkerでは4種類、Double / Take/PassではDMPを除く3種類から選択できます。</p>
+          <h3>ALL / Point Match / DMP / Unlimited</h3>
+          <p>CheckerではALL → Point Match → DMP → Unlimitedの順で切り替わり、Double / Take/PassではDMPを除く3種類から選択できます。</p>
         </div>
         <div class="info-card">
-          <span class="tag">Task</span>
+          <span class="tag">☰ → Task</span>
           <h3>要復習ポジション</h3>
           <p>未正解、または正解数が不正解数を上回っていないポジションだけを表示します。</p>
         </div>
         <div class="info-card">
-          <span class="tag">New</span>
+          <span class="tag">☰ → New</span>
           <h3>新着ポジション</h3>
           <p>直近7日間に追加・更新されたポジションだけを表示します。</p>
+        </div>
+        <div class="info-card">
+          <span class="tag gold">SORT</span>
+          <h3>Task / New / フォルダ</h3>
+          <p>上部メニューの☰から絞り込みを開きます。ALL・Task・New・各フォルダには対象ポジション数が表示されます。Task・Newは同時に指定でき、フォルダは複数選択できます。親フォルダを選ぶと配下のサブフォルダもまとめて出題対象になります。</p>
         </div>
       </div>
     </section>

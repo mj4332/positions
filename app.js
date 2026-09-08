@@ -4,7 +4,8 @@ const POSITIONS_ROOT = new URL("./", window.location.href).href;
 const DATA_URL = `${POSITIONS_ROOT}data/positions.json`;
 const STORAGE_KEY = "yanagi-backgammon-quiz-progress-v1";
 const SETTINGS_KEY = "yanagi-backgammon-quiz-settings-v1";
-const FILTER_MODE_VERSION = 3;
+const FILTER_MODE_VERSION = 5;
+const ROOT_FOLDER_FILTER = "__root__";
 const DAILY_STORAGE_KEY = "yanagi-backgammon-quiz-daily-v1";
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const BOARD_PRELOAD_COUNT = 3;
@@ -12,6 +13,8 @@ const BOARD_PRELOAD_CACHE_LIMIT = 8;
 const LOCAL_DB_NAME = "position-drill-local-v1";
 const LOCAL_DB_STORE = "records";
 const NEW_POSITION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SMARTPHONE_MEDIA_QUERY = "(max-width: 790px)";
+const DESKTOP_MEDIA_QUERY = "(min-width: 791px)";
 
 const KIND_LABELS = {
   all: "ALL",
@@ -27,8 +30,13 @@ const MATCH_TYPE_LABELS = {
   unlimited: "Unlimited",
 };
 
+const FILTER_LABELS = {
+  task: "Task",
+  new: "New",
+};
+
 const KIND_ORDER = ["checker", "double", "take"];
-const MATCH_TYPE_ORDER = ["all", "point", "unlimited", "dmp"];
+const MATCH_TYPE_ORDER = ["all", "point", "dmp", "unlimited"];
 const CUBE_MATCH_TYPE_ORDER = ["all", "point", "unlimited"];
 
 const state = {
@@ -46,6 +54,7 @@ const state = {
   dataVersion: "",
   boardQueue: [],
   filters: { task: false, new: false },
+  folderFilters: [],
 };
 
 const elements = {
@@ -53,11 +62,16 @@ const elements = {
   empty: document.getElementById("empty-state"),
   kindSelector: document.getElementById("kind-selector"),
   kindSelectorSlot: document.getElementById("kind-selector-slot"),
-  kindCount: document.getElementById("kind-count"),
   matchSelector: document.getElementById("match-selector"),
   matchSelectorSlot: document.getElementById("match-selector-slot"),
-  matchCount: document.getElementById("match-count"),
+  positionCount: document.getElementById("position-count"),
   filterButtons: [...document.querySelectorAll("[data-filter]")],
+  sortButton: document.getElementById("sort-button"),
+  folderModal: document.getElementById("folder-modal"),
+  folderModalList: document.getElementById("folder-modal-list"),
+  sortAllCount: document.getElementById("sort-all-count"),
+  sortTaskCount: document.getElementById("sort-task-count"),
+  sortNewCount: document.getElementById("sort-new-count"),
   board: document.getElementById("board-image"),
   positionCorrect: document.getElementById("position-correct"),
   positionWrong: document.getElementById("position-wrong"),
@@ -193,6 +207,8 @@ function saveSettings() {
     matchType: state.matchType,
     taskOnly: state.filters.task,
     newOnly: state.filters.new,
+    sourceFolders: state.folderFilters.slice(),
+    sourceFolder: state.folderFilters[0] || "",
     filterModeVersion: FILTER_MODE_VERSION,
   };
   saveLocalJSON(SETTINGS_KEY, settings);
@@ -207,7 +223,7 @@ function progressKey(position) {
     return `xgid:${kind}:${position.xgid}`;
   }
 
-  const source = position.sourceFile || "";
+  const source = position.sourcePath || position.sourceFile || "";
   const game = position.gameNumber ?? "";
   const move = position.moveNumber ?? "";
   if (source || game !== "" || move !== "") {
@@ -344,13 +360,58 @@ function positionsForKind(kind) {
   return state.positions.filter((position) => decisionKind(position) === kind);
 }
 
-function positionsForMatchType(matchType) {
-  if (matchType === "all") return state.positions.slice();
-  return state.positions.filter((position) => positionMatchType(position) === matchType);
+function normalizedSourceFolder(position) {
+  const explicit = String(position?.sourceFolder || "").replace(/^\/+|\/+$/g, "");
+  if (explicit) return explicit;
+
+  const path = String(position?.sourcePath || "").replace(/^\/+|\/+$/g, "");
+  const slash = path.lastIndexOf("/");
+  return slash >= 0 ? path.slice(0, slash) : "";
+}
+
+function normalizedFolderFilters(filters = state.folderFilters) {
+  const values = Array.isArray(filters) ? filters : [filters];
+  return [...new Set(values.map((value) => String(value || "")).filter(Boolean))];
+}
+
+function folderFilterMatches(position, filters = state.folderFilters) {
+  const selected = normalizedFolderFilters(filters);
+  const folder = normalizedSourceFolder(position);
+  if (!selected.length) return true;
+  return selected.some((filter) => {
+    if (filter === ROOT_FOLDER_FILTER) return folder === "";
+    return folder === filter || folder.startsWith(`${filter}/`);
+  });
+}
+
+function availableFolderFilters() {
+  const folders = new Set();
+  let hasRoot = false;
+
+  state.positions.forEach((position) => {
+    const folder = normalizedSourceFolder(position);
+    if (!folder) {
+      hasRoot = true;
+      return;
+    }
+
+    const parts = folder.split("/").filter(Boolean);
+    for (let index = 1; index <= parts.length; index += 1) {
+      folders.add(parts.slice(0, index).join("/"));
+    }
+  });
+
+  return [
+    ...(hasRoot ? [ROOT_FOLDER_FILTER] : []),
+    ...Array.from(folders).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+  ];
 }
 
 function filteredPositionsForKind(kind) {
   let pool = positionsForKind(kind);
+  if (state.folderFilters.length) {
+    pool = pool.filter((position) => folderFilterMatches(position));
+  }
   if (state.matchType !== "all") {
     pool = pool.filter((position) => positionMatchType(position) === state.matchType);
   }
@@ -991,15 +1052,10 @@ function updateTotals() {
 }
 
 function updateCounts() {
-  // 1st menu: total positions for the selected decision kind, independent of
-  // match type / Task / New filters.
-  const kindTotal = positionsForKind(state.currentKind).length;
-
-  // 2nd menu: positions remaining after every active filter is applied.
+  // The left menu cell shows the final number of positions after every current
+  // condition has been applied: kind, match type, Task/New and source folder.
   const filteredCount = filteredPositionsForKind(state.currentKind).length;
-
-  if (elements.kindCount) elements.kindCount.textContent = String(kindTotal);
-  if (elements.matchCount) elements.matchCount.textContent = String(filteredCount);
+  if (elements.positionCount) elements.positionCount.textContent = String(filteredCount);
 }
 
 function sourceFileLabel(position) {
@@ -1294,16 +1350,8 @@ function judge(result) {
 }
 
 function kindDisplayLabels(kind) {
-  return {
-    full: KIND_LABELS[kind] || "Checker Play",
-    short: kind === "checker"
-      ? "Checker"
-      : kind === "double"
-        ? "Double"
-        : kind === "take"
-          ? "Take/Pass"
-          : "ALL",
-  };
+  const label = KIND_LABELS[kind] || KIND_LABELS.all;
+  return { full: label, short: label };
 }
 
 function matchTypeDisplayLabels(matchType) {
@@ -1345,12 +1393,16 @@ function normalizeMatchTypeForKind(kind, matchType) {
   return matchTypeOrderForKind(kind).includes(matchType) ? matchType : "all";
 }
 
+function resetCurrentSelection() {
+  state.current = null;
+  resetBoardQueue();
+}
+
 function setKind(kind) {
   if (!KIND_ORDER.includes(kind)) return;
   state.currentKind = kind;
   state.matchType = normalizeMatchTypeForKind(kind, state.matchType);
-  state.current = null;
-  resetBoardQueue();
+  resetCurrentSelection();
   syncKindButtons();
   syncMatchTypeButtons();
   saveSettings();
@@ -1370,8 +1422,7 @@ function setMatchType(matchType) {
   if (!matchTypeOrderForKind().includes(matchType)) return;
   state.matchType = matchType;
 
-  state.current = null;
-  resetBoardQueue();
+  resetCurrentSelection();
   syncMatchTypeButtons();
   syncKindButtons();
   saveSettings();
@@ -1398,11 +1449,22 @@ function cycleSelector(selector, delta) {
   if (selector === "match") cycleMatchType(delta);
 }
 
+function updateSortModalCounts() {
+  if (elements.sortAllCount) elements.sortAllCount.textContent = String(state.positions.length);
+  if (elements.sortTaskCount) {
+    elements.sortTaskCount.textContent = String(state.positions.filter(isChallenge).length);
+  }
+  if (elements.sortNewCount) {
+    elements.sortNewCount.textContent = String(state.positions.filter(isNewPosition).length);
+  }
+}
+
 function syncFilterButtons() {
+  updateSortModalCounts();
   elements.filterButtons.forEach((button) => {
     const filter = button.dataset.filter;
     const active = Boolean(state.filters[filter]);
-    const activeLabel = filter === "task" ? "Task" : "New";
+    const activeLabel = FILTER_LABELS[filter] || FILTER_LABELS.new;
     const label = button.querySelector(".filter-label");
     if (label) label.textContent = activeLabel;
     button.classList.toggle("is-active", active);
@@ -1414,15 +1476,115 @@ function syncFilterButtons() {
 function toggleFilter(filter) {
   if (!(filter in state.filters)) return;
   state.filters[filter] = !state.filters[filter];
-  state.current = null;
-  resetBoardQueue();
+  resetCurrentSelection();
   syncFilterButtons();
   saveSettings();
   renderCurrent();
 }
 
+function folderFilterDisplayLabel(filter) {
+  if (!filter) return "ALL";
+  if (filter === ROOT_FOLDER_FILTER) return "フォルダ未分類";
+  const parts = String(filter).split("/");
+  return parts[parts.length - 1] || filter;
+}
+
+function folderFilterCount(filter) {
+  return state.positions.filter((position) => folderFilterMatches(position, [filter])).length;
+}
+
+function renderFolderModal() {
+  if (!elements.folderModalList) return;
+
+  updateSortModalCounts();
+  const filters = availableFolderFilters();
+  elements.folderModalList.innerHTML = filters.map((filter) => {
+    const selected = state.folderFilters.includes(filter);
+    const depth = filter === ROOT_FOLDER_FILTER ? 0 : Math.max(0, filter.split("/").length - 1);
+    const fullLabel = filter === ROOT_FOLDER_FILTER ? "フォルダ未分類" : filter;
+    const label = folderFilterDisplayLabel(filter);
+    return `
+      <button type="button" class="folder-option ${selected ? "is-selected" : ""}"
+        data-folder-filter="${escapeHTML(filter)}" role="option" aria-selected="${selected}"
+        title="${escapeHTML(fullLabel)}" style="--folder-depth:${depth}">
+        <span class="folder-option-mark" aria-hidden="true">${selected ? "✓" : ""}</span>
+        <span class="folder-option-label">${escapeHTML(label)}</span>
+        <span class="folder-option-count">${folderFilterCount(filter)}</span>
+      </button>`;
+  }).join("");
+}
+
+function positionFolderModalBelowMenu() {
+  if (!elements.folderModal || !elements.sortButton) return;
+  const menuBar = elements.sortButton.closest?.(".menu-bar");
+  const menuRect = menuBar?.getBoundingClientRect?.();
+  if (!menuRect) return;
+
+  const top = Math.max(0, Math.round(menuRect.bottom));
+  elements.folderModal.style.setProperty("--folder-modal-top", `${top}px`);
+
+  if (window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
+    const answerColumn = document.querySelector(".answer-column");
+    const answerRect = answerColumn?.getBoundingClientRect?.();
+    if (answerRect) {
+      elements.folderModal.style.setProperty("--folder-modal-left", `${Math.round(answerRect.left)}px`);
+      elements.folderModal.style.setProperty("--folder-modal-width", `${Math.round(answerRect.width)}px`);
+    }
+  } else {
+    elements.folderModal.style.removeProperty("--folder-modal-left");
+    elements.folderModal.style.removeProperty("--folder-modal-width");
+  }
+}
+
+function setFolderModalOpenState(open) {
+  elements.sortButton?.classList.toggle("is-open", open);
+  elements.sortButton?.setAttribute("aria-expanded", String(open));
+  elements.sortButton?.setAttribute("aria-label", open ? "Close sort menu" : "Open sort menu");
+}
+
+function openFolderModal() {
+  if (!elements.folderModal) return;
+  renderFolderModal();
+  positionFolderModalBelowMenu();
+  elements.folderModal.hidden = false;
+  document.body.classList.add("folder-modal-open");
+  setFolderModalOpenState(true);
+  window.setTimeout(() => {
+    elements.folderModalList?.querySelector('[aria-selected="true"]')?.focus?.();
+  }, 0);
+}
+
+function closeFolderModal() {
+  if (!elements.folderModal || elements.folderModal.hidden) return;
+  elements.folderModal.hidden = true;
+  document.body.classList.remove("folder-modal-open");
+  setFolderModalOpenState(false);
+  elements.sortButton?.focus?.({ preventScroll: true });
+}
+
+function toggleFolderModal() {
+  if (!elements.folderModal || elements.folderModal.hidden) openFolderModal();
+  else closeFolderModal();
+}
+
+function setFolderFilter(filter) {
+  const requested = String(filter || "");
+  const available = availableFolderFilters();
+  if (!requested || !available.includes(requested)) return;
+
+  const selected = new Set(state.folderFilters);
+  if (selected.has(requested)) selected.delete(requested);
+  else selected.add(requested);
+  state.folderFilters = available.filter((value) => selected.has(value));
+
+  resetCurrentSelection();
+  saveSettings();
+  renderCurrent();
+  renderFolderModal();
+}
+
 function installSmartphoneZoomGuard() {
-  const smartphone = window.matchMedia("(max-width: 790px)");
+  const smartphone = window.matchMedia(SMARTPHONE_MEDIA_QUERY);
   const preventGesture = (event) => {
     if (smartphone.matches) event.preventDefault();
   };
@@ -1451,6 +1613,18 @@ function installSmartphoneZoomGuard() {
 }
 
 function installEvents() {
+  const smartphone = window.matchMedia(SMARTPHONE_MEDIA_QUERY);
+
+  elements.sortButton?.addEventListener("click", toggleFolderModal);
+  elements.folderModalList?.addEventListener("click", (event) => {
+    const option = event.target.closest?.("[data-folder-filter]");
+    if (!option) return;
+    setFolderFilter(option.dataset.folderFilter || "");
+  });
+  window.addEventListener("resize", () => {
+    if (elements.folderModal && !elements.folderModal.hidden) positionFolderModalBelowMenu();
+  });
+
   elements.kindSelector.addEventListener("click", () => cycleKind(1));
   elements.matchSelector.addEventListener("click", () => cycleMatchType(1));
 
@@ -1462,13 +1636,13 @@ function installEvents() {
     let startPoint = null;
 
     slot.addEventListener("touchstart", (event) => {
-      if (!window.matchMedia("(max-width: 790px)").matches || event.touches.length !== 1) return;
+      if (!smartphone.matches || event.touches.length !== 1) return;
       const touch = event.touches[0];
       startPoint = { x: touch.clientX, y: touch.clientY };
     }, { passive: true });
 
     slot.addEventListener("touchend", (event) => {
-      if (!startPoint || !window.matchMedia("(max-width: 790px)").matches) {
+      if (!startPoint || !smartphone.matches) {
         startPoint = null;
         return;
       }
@@ -1512,6 +1686,12 @@ async function syncPositions({ initial = false } = {}) {
 
   const previousId = state.current?.id || null;
   state.positions = (payload.positions || []).filter((position) => decisionKind(position));
+  const availableFolders = new Set(availableFolderFilters());
+  const validFolderFilters = state.folderFilters.filter((filter) => availableFolders.has(filter));
+  if (validFolderFilters.length !== state.folderFilters.length) {
+    state.folderFilters = validFolderFilters;
+    saveSettings();
+  }
   migrateProgressKeys();
   if (state.dataVersion !== nextVersion) resetBoardQueue({ clearCache: true });
   state.dataVersion = nextVersion;
@@ -1557,6 +1737,13 @@ async function start() {
   if (Number(settings.filterModeVersion) >= 2) {
     state.filters.task = Boolean(settings.taskOnly ?? settings.challengeOnly ?? false);
     state.filters.new = Boolean(settings.newOnly ?? false);
+    if (Array.isArray(settings.sourceFolders)) {
+      state.folderFilters = normalizedFolderFilters(settings.sourceFolders);
+    } else if (typeof settings.sourceFolder === "string" && settings.sourceFolder) {
+      state.folderFilters = [settings.sourceFolder];
+    } else {
+      state.folderFilters = [];
+    }
   } else {
     state.filters.task = false;
     state.filters.new = false;

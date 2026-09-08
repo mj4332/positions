@@ -31,29 +31,27 @@
 
   <main>
     <section class="controls" aria-label="Drill settings">
-      <div class="menu-grid">
-        <div class="menu-group menu-group-primary">
-          <div id="kind-selector-slot" class="menu-slot selector-slot" data-selector="kind">
-            <button id="kind-selector" type="button" class="menu-selector" aria-label="Position type">
-              <span class="selector-label-full">Checker Play</span>
-              <span class="selector-label-short">Checker</span>
-              <span id="kind-count" class="selector-count">0</span>
-            </button>
-          </div>
-
-          <div id="match-selector-slot" class="menu-slot selector-slot" data-selector="match">
-            <button id="match-selector" type="button" class="menu-selector" aria-label="Match type">
-              <span class="selector-label-full">ALL</span>
-              <span class="selector-label-short">ALL</span>
-              <span id="match-count" class="selector-count">0</span>
-            </button>
-          </div>
+      <div class="menu-bar">
+        <div class="menu-position-count" aria-label="Matching positions">
+          <strong id="position-count">0</strong>
+          <span>Positions</span>
         </div>
 
-        <div class="menu-group menu-group-filters">
-          <button type="button" class="menu-slot filter-tab" data-filter="task" aria-pressed="false" aria-label="Task filter: off"><span class="filter-label">Task</span><span class="filter-check" aria-hidden="true"></span></button>
-          <button type="button" class="menu-slot filter-tab" data-filter="new" aria-pressed="false" aria-label="New filter: off"><span class="filter-label">New</span><span class="filter-check" aria-hidden="true"></span></button>
+        <div id="kind-selector-slot" class="menu-bar-cell selector-slot" data-selector="kind">
+          <button id="kind-selector" type="button" class="menu-selector" aria-label="Position type">
+            <span class="selector-label-full">Checker Play</span>
+            <span class="selector-label-short">Checker Play</span>
+          </button>
         </div>
+
+        <div id="match-selector-slot" class="menu-bar-cell selector-slot" data-selector="match">
+          <button id="match-selector" type="button" class="menu-selector" aria-label="Match type">
+            <span class="selector-label-full">ALL</span>
+            <span class="selector-label-short">ALL</span>
+          </button>
+        </div>
+
+        <button id="sort-button" type="button" class="menu-bar-cell sort-button" aria-haspopup="dialog" aria-controls="folder-modal" aria-expanded="false" aria-label="Open sort menu"><span class="menu-toggle-icon" aria-hidden="true"><i></i><i></i><i></i></span></button>
       </div>
     </section>
 
@@ -112,6 +110,28 @@
       <div id="source-file" class="source-file"></div>
     </div>
   </main>
+
+  <div id="folder-modal" class="folder-modal" role="dialog" aria-modal="true" aria-label="Sort positions" hidden>
+    <div class="folder-modal-panel">
+      <div class="sort-modal-filters">
+        <div class="sort-all-option" aria-label="All positions">
+          <span class="sort-all-label">ALL</span>
+          <span id="sort-all-count" class="sort-option-count">0</span>
+        </div>
+        <button type="button" class="sort-filter-option" data-filter="task" aria-pressed="false" aria-label="Task filter: off">
+          <span class="filter-checkbox" aria-hidden="true"></span>
+          <span class="sort-filter-copy"><span class="filter-label">Task</span><span class="sort-filter-description">Correct ≤ Incorrect</span></span>
+          <span id="sort-task-count" class="sort-option-count">0</span>
+        </button>
+        <button type="button" class="sort-filter-option" data-filter="new" aria-pressed="false" aria-label="New filter: off">
+          <span class="filter-checkbox" aria-hidden="true"></span>
+          <span class="sort-filter-copy"><span class="filter-label">New</span><span class="sort-filter-description">Uploaded in the last 7 days</span></span>
+          <span id="sort-new-count" class="sort-option-count">0</span>
+        </button>
+      </div>
+      <div id="folder-modal-list" class="folder-modal-list" role="listbox" aria-label="Position group"></div>
+    </div>
+  </div>
 
   <script>
     const quizAppScript = document.createElement("script");

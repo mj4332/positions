@@ -146,6 +146,7 @@ run("Task + New filters intersect and counts are per decision kind", () => {
     };
     state.matchType = "point";
     state.filters = {task:true,new:true};
+    state.folderFilters = [];
   `);
 
   assert.deepEqual(
@@ -159,6 +160,40 @@ run("Task + New filters intersect and counts are per decision kind", () => {
   assert.deepEqual(
     Array.from(evaluate('filteredPositionsForKind("take").map(p => p.id)')),
     ["T1"],
+  );
+});
+
+
+run("Folder filter includes descendants and can isolate imports root", () => {
+  evaluate(`
+    state.positions = [
+      {id:"R",decisionKind:"checker",sourceFolder:"",sourcePath:"root.xgp",matchLength:7,isNew:true},
+      {id:"A",decisionKind:"checker",sourceFolder:"MATCH",sourcePath:"MATCH/a.xgp",matchLength:7,isNew:true},
+      {id:"B",decisionKind:"checker",sourceFolder:"MATCH/2026",sourcePath:"MATCH/2026/b.xgp",matchLength:7,isNew:true},
+      {id:"C",decisionKind:"checker",sourceFolder:"CUBE",sourcePath:"CUBE/c.xgp",matchLength:7,isNew:true}
+    ];
+    state.progress = {};
+    state.matchType = "all";
+    state.filters = {task:false,new:false};
+    state.folderFilters = ["MATCH"];
+  `);
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["A", "B"],
+  );
+  evaluate('state.folderFilters = [ROOT_FOLDER_FILTER]');
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["R"],
+  );
+  evaluate('state.folderFilters = ["MATCH", "CUBE"]');
+  assert.deepEqual(
+    Array.from(evaluate('filteredPositionsForKind("checker").map(p => p.id)')),
+    ["A", "B", "C"],
+  );
+  assert.deepEqual(
+    Array.from(evaluate('availableFolderFilters()')),
+    ["__root__", "CUBE", "MATCH", "MATCH/2026"],
   );
 });
 
@@ -475,6 +510,7 @@ run("ALL decision kind and match type filter compose with Task/New", () => {
     };
     state.matchType = "point";
     state.filters = {task:true,new:true};
+    state.folderFilters = [];
   `);
 
   assert.deepEqual(
@@ -500,7 +536,7 @@ run("Kind selector cycles Checker / Double / Take only", () => {
 run("Checker match selector includes DMP, Double/Take selector skips it", () => {
   assert.deepEqual(
     Array.from(evaluate('matchTypeOrderForKind("checker")')),
-    ["all", "point", "unlimited", "dmp"],
+    ["all", "point", "dmp", "unlimited"],
   );
   assert.deepEqual(
     Array.from(evaluate('matchTypeOrderForKind("double")')),
@@ -510,16 +546,20 @@ run("Checker match selector includes DMP, Double/Take selector skips it", () => 
     Array.from(evaluate('matchTypeOrderForKind("take")')),
     ["all", "point", "unlimited"],
   );
-  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("checker"), "unlimited", 1)'), "dmp");
+  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("checker"), "point", 1)'), "dmp");
+  assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("checker"), "dmp", 1)'), "unlimited");
   assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("double"), "unlimited", 1)'), "all");
   assert.equal(evaluate('cycleOptionValue(matchTypeOrderForKind("take"), "all", -1)'), "unlimited");
   assert.equal(evaluate('matchTypeDisplayLabels("point").short'), "Point Match");
   assert.equal(evaluate('matchTypeDisplayLabels("all").full'), "ALL");
+  assert.equal(evaluate('kindDisplayLabels("checker").full'), "Checker Play");
+  assert.equal(evaluate('kindDisplayLabels("double").full'), "Double Action");
+  assert.equal(evaluate('kindDisplayLabels("take").full'), "Take/Pass");
 });
 
 
 
-run("Kind count stays total while match count follows all active filters", () => {
+run("Positions count follows every active condition", () => {
   evaluate(`
     state.positions = [
       {id:"C7",decisionKind:"checker",matchLength:7,isNew:true},
@@ -535,8 +575,7 @@ run("Kind count stays total while match count follows all active filters", () =>
     updateCounts();
   `);
 
-  assert.equal(evaluate("elements.kindCount.textContent"), "3");
-  assert.equal(evaluate("elements.matchCount.textContent"), "1");
+  assert.equal(evaluate("elements.positionCount.textContent"), "1");
 });
 
 
@@ -994,4 +1033,60 @@ run("Take/Pass keeps the best-action band and pre-offer board fixed", () => {
   assert.match(evaluate("elements.summaryAnalysis.innerHTML"), />CB<\/span><span class="stat-value ">1<\/span>/);
 });
 
+
+run("SP kind labels keep full Checker Play / Double Action names", () => {
+  assert.equal(evaluate('kindDisplayLabels("checker").short'), "Checker Play");
+  assert.equal(evaluate('kindDisplayLabels("double").short'), "Double Action");
+});
+
+run("Folder choices exclude selectable ALL and root is フォルダ未分類", () => {
+  evaluate(`
+    state.positions = [
+      {id:"R",decisionKind:"checker",sourceFolder:"",sourcePath:"root.xgp",matchLength:7},
+      {id:"A",decisionKind:"checker",sourceFolder:"MATCH",sourcePath:"MATCH/a.xgp",matchLength:7}
+    ];
+    state.folderFilters = [];
+    renderFolderModal();
+  `);
+  assert.equal(evaluate('folderFilterDisplayLabel(ROOT_FOLDER_FILTER)'), "フォルダ未分類");
+  assert.equal(evaluate('elements.folderModalList.innerHTML.includes("フォルダ未分類")'), true);
+  assert.equal(evaluate('elements.folderModalList.innerHTML.includes("data-folder-filter=\\"\\"")'), false);
+});
+
+run("Folder selection keeps the sort modal open until the hamburger/X is pressed", () => {
+  evaluate(`
+    state.positions = [
+      {id:"A",decisionKind:"checker",sourceFolder:"MATCH",sourcePath:"MATCH/a.xgp",matchLength:7}
+    ];
+    state.folderFilters = [];
+    elements.folderModal.hidden = false;
+    setFolderFilter("MATCH");
+  `);
+  assert.deepEqual(Array.from(evaluate('state.folderFilters')), ["MATCH"]);
+  assert.equal(evaluate('elements.folderModal.hidden'), false);
+});
+
 console.log("All app regression tests passed.");
+
+
+run("Sort modal exposes ALL, Task and New total counts", () => {
+  evaluate(`
+    state.positions = [
+      {id:"A",decisionKind:"checker",isNew:true},
+      {id:"B",decisionKind:"checker",isNew:false},
+      {id:"C",decisionKind:"double",isNew:true}
+    ];
+    state.progress = {
+      [progressKey(state.positions[0])]: {correct:0, wrong:1},
+      [progressKey(state.positions[1])]: {correct:2, wrong:0},
+      [progressKey(state.positions[2])]: {correct:0, wrong:0}
+    };
+    elements.sortAllCount = {textContent:""};
+    elements.sortTaskCount = {textContent:""};
+    elements.sortNewCount = {textContent:""};
+    updateSortModalCounts();
+  `);
+  assert.equal(evaluate('elements.sortAllCount.textContent'), "3");
+  assert.equal(evaluate('elements.sortTaskCount.textContent'), "2");
+  assert.equal(evaluate('elements.sortNewCount.textContent'), "2");
+});
